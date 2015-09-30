@@ -1011,10 +1011,10 @@ local TapOutput_MT = { __index = TapOutput }
 
     function TapOutput:addFailure( errorMsg, stackTrace )
         print(addColour(string.format("not ok %d\t%s", self.result.currentTestNumber, self.result.currentNode.testName), ac.red .. ac.bright .. ac.reverse) )
-        if self.verbosity > M.VERBOSITY_LOW or true then
+        if self.verbosity > M.VERBOSITY_LOW then
            print( prefixString( '    ', addColour(errorMsg, ac.cyan) ) )
         end
-        if self.verbosity > M.VERBOSITY_DEFAULT or true then
+        if self.verbosity > M.VERBOSITY_DEFAULT then
            print( prefixString( '    ', addColour(stackTrace, ac.dim) ) )
         end
     end
