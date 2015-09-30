@@ -11,10 +11,21 @@ Version: 3.0
 
 local M={}
 
+M.COLOURED_OUTPUT = false
+local ac = require('ansicolors')
+local function addColour(txt,clr)
+    if M.COLOURED_OUTPUT then
+      return clr .. txt .. ac.reset
+    else
+      return txt
+    end
+end
+
+
 -- private exported functions (for testing)
 M.private = {}
 
-M.VERSION='3.1'
+M.VERSION='3.1.1'
 
 --[[ Some people like assertEquals( actual, expected ) and some people prefer 
 assertEquals( expected, actual ).
@@ -993,24 +1004,24 @@ local TapOutput_MT = { __index = TapOutput }
     end
     function TapOutput:startClass(className) 
         if className ~= '[TestFunctions]' then
-            print('# Starting class: '..className)
+            print(addColour('# Starting class: '..className, ac.onblue ) )
         end
     end
     function TapOutput:startTest(testName) end
 
     function TapOutput:addFailure( errorMsg, stackTrace )
-        print(string.format("not ok %d\t%s", self.result.currentTestNumber, self.result.currentNode.testName ))
-        if self.verbosity > M.VERBOSITY_LOW then
-           print( prefixString( '    ', errorMsg ) )
+        print(addColour(string.format("not ok %d\t%s", self.result.currentTestNumber, self.result.currentNode.testName), ac.red .. ac.bright .. ac.reverse) )
+        if self.verbosity > M.VERBOSITY_LOW or true then
+           print( prefixString( '    ', addColour(errorMsg, ac.cyan) ) )
         end
-        if self.verbosity > M.VERBOSITY_DEFAULT then
-           print( prefixString( '    ', stackTrace ) )
+        if self.verbosity > M.VERBOSITY_DEFAULT or true then
+           print( prefixString( '    ', addColour(stackTrace, ac.dim) ) )
         end
     end
 
     function TapOutput:endTest(testHasFailure)
         if not self.result.currentNode:hasFailure() then
-            print(string.format("ok     %d\t%s", self.result.currentTestNumber, self.result.currentNode.testName ))
+            print(addColour(string.format("ok     %d\t%s", self.result.currentTestNumber, self.result.currentNode.testName ), ac.green .. ac.bright ) )
         end
     end
 
@@ -1018,8 +1029,8 @@ local TapOutput_MT = { __index = TapOutput }
 
     function TapOutput:endSuite()
         local t = {}
-        table.insert(t, string.format('# Ran %d tests in %0.3f seconds, %d successes, %d failures',
-            self.result.testCount, self.result.duration, self.result.testCount-self.result.failureCount, self.result.failureCount ) )
+        table.insert(t, addColour(string.format('# Ran %d tests in %0.3f seconds, %d successes, %d failures',
+            self.result.testCount, self.result.duration, self.result.testCount-self.result.failureCount, self.result.failureCount ), ac.yellow ) )
         if self.result.nonSelectedCount > 0 then
             table.insert(t, string.format(", %d non selected tests", self.result.nonSelectedCount ) )
         end
@@ -1070,11 +1081,11 @@ local JUnitOutput_MT = { __index = JUnitOutput }
     end
     function JUnitOutput:startClass(className) 
         if className ~= '[TestFunctions]' then
-            print('# Starting class: '..className)
+            print(addColour('# Starting class: '..className, ac.onblue) )
         end
     end
     function JUnitOutput:startTest(testName)
-        print('# Starting test: '..testName)
+        print(addColour('# Starting test: '..testName, ac.onblue ) )
     end
 
     function JUnitOutput:addFailure( errorMsg, stackTrace )
