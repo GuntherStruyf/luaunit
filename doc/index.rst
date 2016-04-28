@@ -29,43 +29,49 @@ format, set verbosity, ...
 Platform support
 ================
 
-LuaUnit works with Lua 5.1, 5.2 and 5.3 . It is tested on Windows XP, Windows Server 2003 and Ubuntu 14.04 (see 
+LuaUnit works with Lua 5.1, 5.2, 5.3 and luajit (v1 and v2.1). It is tested on Windows Seven, Windows Server 2003 and Ubuntu 14.04 (see 
 continuous build results on `Travis-CI`_  and `AppVeyor`_ ) and should work on all platforms supported by lua.
 It has no other dependency than lua itself. 
+
+
+LuaUnit works with Lua 5.1, LuaJIT 2.0, LuaJIT 2.1 beta, Lua 5.2 and Lua 5.3 . It is tested on Windows Seven, Windows Server 2012 R2 (x64) and Ubuntu 14.04 (see 
+continuous build results on `Travis-CI`_  and `AppVeyor`_  ) and should work on all platforms supported by Lua.
+It has no other dependency than Lua itself.
+
 
 .. _Travis-CI: https://travis-ci.org/bluebird75/luaunit
 .. _AppVeyor: https://ci.appveyor.com/project/bluebird75/luaunit/history
 
-LuaUnit is packed into a single-file. To make start using it, just add the file to your project.
+LuaUnit is packed into a single-file. To make start using it, just add the file to your project. Other installation methods are described in the `README.md`_ file.
 
-Development
-===========
+.. _README.md: https://github.com/bluebird75/luaunit
 
-LuaUnit is developed on `Github`_.
-
-.. _Github: https://github.com/bluebird75/luaunit
-
-Bugs or feature requests should be reported using `GitHub issues`_.
-
-.. _Github issues: https://github.com/bluebird75/luaunit/issues
-
-Usage and development may be discussed on `LuaUnit mailing-list`_ . If you are using LuaUnit for your
-project, please drop us an note.
-
-.. _LuaUnit mailing-list: http://lists.freehackers.org/list/luaunit%40freehackers.org/ 
+LuaUnit is maintained on github:
+https://github.com/bluebird75/luaunit
 
 It is released under the BSD license.
 
-This documentation is available at `Read-the-docs`_.
+LuaUnit development
+===================
 
-.. _Read-the-docs: http://luaunit.readthedocs.org/en/latest/
+See :ref:`developing-luaunit`
 
 Version and Changelog
 =====================
-This documentation describes the functionality of LuaUnit v3.1 .
+This documentation describes the functionality of LuaUnit v3.2 .
 
-New in version 3.1
-------------------
+New in version 3.2 - (in progress)
+------------------------------------
+* distinguish between failures (failed assertion) and errors
+* Support for new versions: Lua 5.3 and LuaJIT (2.0, 2.1 beta)
+* Validation of all lua versions on Travis CI and AppVeyor
+* Compatibility layer with forked luaunit v2.x added
+* added documentation about development process
+* improved support for table containing keys of type table
+* small bug fixes, several internal improvements
+
+New in version 3.1 - 10. Mar 2015
+---------------------------------
 * luaunit no longer pollutes global namespace, unless defining EXPORT_ASSERT_TO_GLOBALS to true
 * fixes and validation of JUnit XML generation
 * strip luaunit internal information from stacktrace
@@ -76,7 +82,7 @@ New in version 3.1
 **Important note when upgrading to version 3.1** : assertions functions are
 no longer exported directly to the global namespace. See :ref:`luaunit-global-asserts`
 
-New in version 3.0 - 9 oct 2014
+New in version 3.0 - 9. Oct 2014
 --------------------------------
 
 Because LuaUnit was forked and released as some 2.x version, version number
@@ -376,6 +382,13 @@ log file name, and erase the log filename after every test::
 
     *Errors generated during execution of setUp() or tearDown()
     functions are considered test failures.*
+
+
+.. Note::
+
+    *For compatibility with luaunit v2 and other lua unit-test frameworks, 
+    setUp() and tearDown() may also be named setup(), SetUp(), Setup(), teardown(), TearDown(), Teardown().*
+
 
 Using the command-line
 ======================
@@ -698,6 +711,8 @@ not influence the test itself.
 
 .. function:: assertEquals(actual, expected)
 
+    **Alias**: *assert_equals()*
+
     Assert that two values are equal. 
 
     For tables, the comparison is a deep comparison :
@@ -711,12 +726,16 @@ not influence the test itself.
 
 .. function:: assertNotEquals(actual, expected)
 
+    **Alias**: *assert_not_equals()*
+
     Assert that two values are different. The assertion
     fails if the two values are identical.
 
     It also uses table deep comparison.
 
 .. function:: assertAlmostEquals( actual, expected, margin )
+
+    **Alias**: *assert_almost_equals()*
 
     Assert that two floating point numbers are almost equal.
 
@@ -727,6 +746,8 @@ not influence the test itself.
     
 .. function:: assertNotAlmostEquals( actual, expected, margin )
 
+    **Alias**: *assert_not_almost_equals()*
+
     Assert that two floating point numbers are not almost equal.
     
 .. _assert-value:
@@ -735,24 +756,34 @@ Value assertions
 ----------------------
 .. function:: assertTrue(value)
 
+    **Alias**: *assert_true()*
+
     Assert that a given value compares to true. Lua coercion rules are applied
     so that values like ``0``, ``""``, ``1.17`` all compare to *true*.
     
 .. function:: assertFalse(value)
+
+    **Alias**: *assert_false()*
 
     Assert that a given value compares to false. Lua coercion rules are applied
     so that only *nil* and *false* all compare to *false*.
     
 .. function:: assertNil(value)
 
+    **Aliases**: *assert_nil()*, *assertIsNil()*, *assert_is_nil()*
+
     Assert that a given value is *nil* .
     
 .. function:: assertNotNil(value)
+
+    **Aliases**: *assert_not_nil()*, *assertNotIsNil()*, *assert_not_is_nil()*
 
     Assert that a given value is not *nil* . Lua coercion rules are applied
     so that values like ``0``, ``""``, ``false`` all validate the assertion.
     
 .. function:: assertIs(actual, expected)
+
+    **Alias**: *assert_is()*
 
     Assert that two variables are identical. For string, numbers, boolean and for nil, 
     this gives the same result as :func:`assertEquals` . For the other types, identity
@@ -774,6 +805,8 @@ Value assertions
     
 .. function:: assertNotIs(actual, expected)
 
+    **Alias**: *assert_not_is()*
+
     Assert that two variables are not identical, in the sense that they do not
     refer to the same value. See :func:`assertIs` for more details.
     
@@ -786,6 +819,8 @@ Assertions related to string and patterns.
 
 .. function:: assertStrContains( str, sub [, useRe] )
 
+    **Alias**: *assert_str_contains()*
+
     Assert that a string contains the given substring or pattern. 
 
     By default, substring is searched in the string. If *useRe*
@@ -794,12 +829,16 @@ Assertions related to string and patterns.
     
 .. function:: assertStrIContains( str, sub )
 
+    **Alias**: *assert_str_icontains()*
+
     Assert that a string contains the given substring, irrespective of the case. 
 
     Not that unlike :func:`assertStrcontains`, you can not search for a pattern.
 
 
 .. function:: assertNotStrContains( str, sub, useRe )
+
+    **Alias**: *assert_not_str_contains()*
 
     Assert that a string does not contain a given substring or pattern.
 
@@ -809,11 +848,15 @@ Assertions related to string and patterns.
     
 .. function:: assertNotStrIContains( str, sub )
 
+    **Alias**: *assert_not_str_icontains()*
+
     Assert that a string does not contain the given substring, irrespective of the case. 
 
     Not that unlike :func:`assertNotStrcontains`, you can not search for a pattern.
 
 .. function:: assertStrMatches( str, pattern [, start [, final] ] )
+
+    **Alias**: *assert_str_matches()*
 
     Assert that a string matches the full pattern *pattern*.
 
@@ -828,6 +871,8 @@ Error assertions
 Error related assertions, to verify error generation and error messages.
 
 .. function:: assertError( func, ...)
+
+    **Alias**: *assert_error()*
 
     Assert that calling functions *func* with the arguments yields an error. If the
     function does not yield an error, the assertion fails.
@@ -846,6 +891,8 @@ Error related assertions, to verify error generation and error messages.
     
 .. function:: assertErrorMsgEquals( expectedMsg, func, ... )
 
+    **Alias**: *assert_error_msg_equals()*
+
     Assert that calling function *func* will generate exactly the given error message. If the
     function does not yield an error, or if the error message is not identical, the assertion fails.
 
@@ -856,11 +903,15 @@ Error related assertions, to verify error generation and error messages.
     
 .. function:: assertErrorMsgContains( partialMsg, func, ... )
 
+    **Alias**: *assert_error_msg_contains()*
+
     Assert that calling function *func* will generate an error message containing *partialMsg* . If the
     function does not yield an error, or if the expected message is not contained in the error message, the 
     assertion fails.
     
 .. function:: assertErrorMsgMatches( expectedPattern, func, ... )
+
+    **Alias**: *assert_error_msg_matches()*
 
     Assert that calling function *func* will generate an error message matching *expectedPattern* . If the
     function does not yield an error, or if the error message does not match the provided patternm the
@@ -882,46 +933,60 @@ Type assertions
 
 .. function:: assertIsNumber(value)
 
+    **Aliases**: *assertNumber()*, *assert_is_number()*, *assert_number()*
+
     Assert that the argument is a number (integer or float)
     
 .. function:: assertIsString(value)
+
+    **Aliases**: *assertString()*, *assert_is_string()*, *assert_string()*
 
     Assert that the argument is a string.
     
 .. function:: assertIsTable(value)
 
+    **Aliases**: *assertTable()*, *assert_is_table()*, *assert_table()*
+
     Assert that the argument is a table.
     
 .. function:: assertIsBoolean(value)
+
+    **Aliases**: *assertBoolean()*, *assert_is_boolean()*, *assert_boolean()*
 
     Assert that the argument is a boolean.
     
 .. function:: assertIsNil(value)
 
+    **Aliases**: *assertNil()*, *assert_is_nil()*, *assert_nil()*
+
     Assert that the argument is a nil.
     
 .. function:: assertIsFunction(value)
+
+    **Aliases**: *assertFunction()*, *assert_is_function()*, *assert_function()*
 
     Assert that the argument is a function.
     
 .. function:: assertIsUserdata(value)
 
+    **Aliases**: *assertUserdata()*, *assert_is_userdata()*, *assert_userdata()*
+
     Assert that the argument is a userdata.
     
 .. function:: assertIsCoroutine(value)
 
+    **Aliases**: *assertCoroutine()*, *assert_is_coroutine()*, *assert_coroutine()*, *assertIsThread()*, *assertThread()*, *assert_is_thread()*, *assert_thread()*
+
     Assert that the argument is a coroutine (an object with type *thread* ).
     
-.. function:: assertIsThread(value)
-
-    An alias for :func:`assertIsCoroutine`.
-
 .. _assert-table:
 
 Table assertions
 --------------------------
 
 .. function:: assertItemsEquals(actual, expected)
+
+    **Alias**: *assert_items_equals()*
 
     Assert that two tables contain the same items, irrespective of their keys.
 
@@ -942,6 +1007,180 @@ Table assertions
 .. code-block:: lua
 
         luaunit.assertItemsEquals( {1,{2,3},4}, {4,{3,2,},1} ) -- assertion fails because {2,3} ~= {3,2}
+
+
+
+.. _developing-luaunit:
+
+Developing LuaUnit
+******************
+
+Development ecosystem
+======================
+
+LuaUnit is developed on `Github`_.
+
+.. _Github: https://github.com/bluebird75/luaunit
+
+Bugs or feature requests should be reported using `GitHub issues`_.
+
+.. _Github issues: https://github.com/bluebird75/luaunit/issues
+
+Usage and development may be discussed on `LuaUnit mailing-list`_ . If you are using LuaUnit for your
+project, please drop us an note.
+
+.. _LuaUnit mailing-list: http://lists.freehackers.org/list/luaunit%40freehackers.org/ 
+
+It is released under the BSD license.
+
+This documentation is available at `Read-the-docs`_.
+
+.. _Read-the-docs: http://luaunit.readthedocs.org/en/latest/
+
+
+Contributing
+=============
+You may contribute to LuaUnit by reporting bugs, fixing reported bugs or developing new features.
+
+Some issues on github are marked with label *enhancement*. Feel free to pick up such tasks and implement them.
+
+Changes should be proposed as *Pull Requests* on github.
+
+Unit-tests
+-------------------
+All proposed changes should pass all unit-tests and if needed, add more unit-tests to cover the bug or the new functionality. Usage is pretty simple:
+
+.. code-block:: shell
+
+    $ lua run_unit_tests.lua
+    ................................................................................
+    ...............................
+    Ran 111 tests in 0.120 seconds
+    OK
+
+
+Functional tests
+-------------------
+Functional tests also exist to validate LuaUnit. Their management is slightly more complicated. 
+
+The main goal of functional tests is to validate that LuaUnit output has not been altered. Since LuaUnit supports some standard compliant output (TAP, junitxml), this is very important (and it has been broken in the past)
+
+Functional tests perform the following actions:
+
+* Run each of the 3 suites: example_with_luaunit.lua, test_with_xml.lua, run_unit_test.lua (LuaUnit's internal test suite)
+* Run every suite with all output format, all verbosity
+* Validate the XML output with jenkins/hudson and junit schema
+* Compare the results with the previous output ( archived in test/ref ), with some tricks to make the comparison possible :
+
+    * adjustment of the file separator to use the same output on Windows and Unix
+    * date and test duration is zeroed so that it does not impact the comparison
+    * adjust the stack trace format which has changed between Lua 5.1, 5.2 and 5.3
+
+For functional tests to run, *diff* must be available on the command line. *xmllint* is needed to perform the xml validation but
+this step is skipped if *xmllint* can not be found.
+
+When functional tests work well, it looks like this:
+
+.. code-block:: shell
+
+    $ lua run_functional_tests.lua
+    ...............
+    Ran 15 tests in 9.676 seconds
+    OK
+
+
+When functional test fail, a diff of the comparison between the reference output and the current output is displayed (it can be quite 
+long). The list of faulty files is summed-up at the end.
+
+Modifying reference files for functional tests
+-----------------------------------------------
+The script run_functional_tests.lua supports a --update option, with an optional argument.
+
+* *--update* without argument **overwrites all reference output** with the current output. Use only if you know what you are doing, this is usually a very bad idea!
+
+* The following argument overwrite a specific subset of reference files, select the one that fits your change:
+
+    *  TestXml: XML output of test_with_xml
+    *  ExampleXml: XML output of example_with_luaunit
+    *  ExampleTap: TAP output of example_with_luaunit
+    *  ExampleText: text output of example_with_luaunit
+    *  ExampleNil: nil output of example_with_luaunit
+    *  UnitXml: XML output of run_unit_tests
+    *  UnitTap: TAP output of run_unit_tests
+    *  UnitText: text output of run_unit_tests 
+
+
+
+
+For example to record a change in the unit-tests:
+
+.. code-block:: shell
+
+    $ lua run_functional_tests.lua --update UnitXml UnitTap UnitText
+    >>>>>>> Generating test/ref/unitTestsXmlDefault.txt
+    >>>>>>> Generating test/ref/unitTestsXmlQuiet.txt
+    >>>>>>> Generating test/ref/unitTestsXmlVerbose.txt
+    >>>>>>> Generating test/ref/unitTestsTapDefault.txt
+    >>>>>>> Generating test/ref/unitTestsTapQuiet.txt
+    >>>>>>> Generating test/ref/unitTestsTapVerbose.txt
+    >>>>>>> Generating test/ref/unitTestsTextDefault.txt
+    >>>>>>> Generating test/ref/unitTestsTextQuiet.txt
+    >>>>>>> Generating test/ref/unitTestsTextVerbose.txt
+    $
+
+You can then commit the new files into git.
+
+.. Note :: how to commit updated reference outputs
+
+    When committing those changes into git, please use if possible an
+    intelligent git committing tool to commit only the interesting changes.
+    With SourceTree for example, in case of XML changes, I can select only the
+    lines relevant to the change and avoid committing all the updates to test
+    duration and test datestamp.
+
+
+
+Typical failures for functional tests
+---------------------------------------
+
+Functional tests may start failing when:
+
+1. Adding a new unit-test
+2. Increasing LuaUnit version
+3. Improving or breaking LuaUnit output
+
+
+**Case 1: adding a new unit-test**
+
+Because functional tests use LuaUnit self tests to verify the output, the output gets broken each time
+a new unit-test is added. This is kind of stupid and should be improved but until it happens, you have to deal with it.
+
+When it happens, functional tests generate tons of diff output, where the main change is the number of tests executed. Please
+carefully verify that this is the only change. If so, fix it with:
+
+.. code-block:: shell
+
+    $ lua run_functional_tests.lua --update UnitXml UnitTap UnitText
+    >>>>>>> Generating test/ref/unitTestsXmlDefault.txt
+    >>>>>>> Generating test/ref/unitTestsXmlQuiet.txt
+    >>>>>>> Generating test/ref/unitTestsXmlVerbose.txt
+    >>>>>>> Generating test/ref/unitTestsTapDefault.txt
+    >>>>>>> Generating test/ref/unitTestsTapQuiet.txt
+    >>>>>>> Generating test/ref/unitTestsTapVerbose.txt
+    >>>>>>> Generating test/ref/unitTestsTextDefault.txt
+    >>>>>>> Generating test/ref/unitTestsTextQuiet.txt
+    >>>>>>> Generating test/ref/unitTestsTextVerbose.txt
+    $
+
+Then commit the updates files.
+
+
+
+
+
+
+
+
 
 
 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,

@@ -1,6 +1,6 @@
 import subprocess, sys, os, shutil, os.path, optparse
 
-VERSION='3.1'
+VERSION='3.2'
 RELEASE_NAME='luaunit-%s' % VERSION
 RELEASE_DIR='release/' + RELEASE_NAME + '/'
 TARGET_ZIP=RELEASE_NAME + '.zip'
@@ -86,12 +86,21 @@ def makedoc():
     shutil.copytree('_build/html', 'html')
     os.chdir('..')
 
+def install():
+    installpath = '/usr/local/share/lua/'
+    for lua, luaversion in ALL_LUA:
+        lua,ver = luaversion.split( )
+        if os.path.exists(installpath+ver):
+            shutil.copy('luaunit.lua',installpath+ver)
+            
+
 
 OptToFunc = {
     'runtests'      : run_tests,
     'runexample'    : run_example,
     'packageit'     : packageit,
     'makedoc'       : makedoc,
+    'install'       : install,
     'help'          : help,
 }
 
