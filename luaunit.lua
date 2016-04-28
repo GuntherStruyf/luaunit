@@ -14,12 +14,12 @@ local M={}
 
 M.COLOURED_OUTPUT = false
 local ac = require('ansicolors')
-local function addColour(txt,clr)
-    if M.COLOURED_OUTPUT then
-      return clr .. txt .. ac.reset
-    else
-      return txt
-    end
+local function addColour(obj, txt,clr)
+  if obj.COLOURED_OUTPUT then
+    return clr .. txt .. ac.reset
+  else
+    return txt
+  end
 end
 
 
@@ -1066,28 +1066,28 @@ TapOutput.__class__ = 'TapOutput'
     end
     function TapOutput:startClass(className)
         if className ~= '[TestFunctions]' then
-            print(addColour('# Starting class: '..className, ac.onblue ) )
+            print(addColour(self, '# Starting class: '..className, ac.onblue ) )
         end
     end
 
     function TapOutput:addStatus( node )
-        io.stdout:write("not ok ", self.result.currentTestNumber, "\t", node.testName, "\n")
+        io.stdout:write(addColour(self, "not ok " .. tostring(self.result.currentTestNumber) .. "\t" .. tostring(node.testName) .. "\n", ac.red .. ac.bright .. ac.reverse))
         if self.verbosity > M.VERBOSITY_LOW then
-           print( prefixString( '    ', node.msg ) )
+           print( prefixString( '    ', addColour(self, node.msg, ac.cyan) ) )
         end
         if self.verbosity > M.VERBOSITY_DEFAULT then
-           print( prefixString( '    ', node.stackTrace ) )
+           print( prefixString( '    ', addColour(self, node.stackTrace, ac.dim) ) )
         end
     end
 
     function TapOutput:endTest( node )
         if node:isPassed() then
-            io.stdout:write("ok     ", self.result.currentTestNumber, "\t", node.testName, "\n")
+            io.stdout:write(addColour(self, "ok     ", self.result.currentTestNumber, "\t", node.testName, "\n", ac.green .. ac.bright ))
         end
     end
 
     function TapOutput:endSuite()
-        print( '# '..M.LuaUnit.statusLine( self.result ) )
+        print( addColour(self, '# '..M.LuaUnit.statusLine( self.result ), ac.yellow ) )
         return self.result.notPassedCount
     end
 
@@ -1127,11 +1127,11 @@ JUnitOutput.__class__ = 'JUnitOutput'
     end
     function JUnitOutput:startClass(className)
         if className ~= '[TestFunctions]' then
-            print(addColour('# Starting class: '..className, ac.onblue) )
+            print(addColour(self, '# Starting class: '..className, ac.onblue) )
         end
     end
     function JUnitOutput:startTest(testName)
-        print(addColour('# Starting test: '..testName, ac.onblue ) )
+        print(addColour(self, '# Starting test: '..testName, ac.onblue ) )
     end
 
     function JUnitOutput:addStatus( node )
@@ -1310,14 +1310,14 @@ TextOutput.__class__ = 'TextOutput'
     function TextOutput:endTest( node )
         if node:isPassed() then
             if self.verbosity > M.VERBOSITY_DEFAULT then
-                io.stdout:write("Ok\n")
+                io.stdout:write(addColour(self, "Ok\n", ac.green .. ac.bright ) )
             else
-                io.stdout:write(".")
+                io.stdout:write(addColour(self, ".", ac.green .. ac.bright ) )
             end
         else
             if self.verbosity > M.VERBOSITY_DEFAULT then
-                print( node.status )
-                print( node.msg )
+                print(addColour(self, node.status, ac.red .. ac.bright .. ac.reverse ) )
+                print(addColour(self, node.msg, ac.red .. ac.bright .. ac.reverse ) )
                 --[[
                 -- find out when to do this:
                 if self.verbosity > M.VERBOSITY_DEFAULT then
@@ -1326,15 +1326,15 @@ TextOutput.__class__ = 'TextOutput'
                 ]]
             else
                 -- write only the first character of status
-                io.stdout:write(string.sub(node.status, 1, 1))
+                io.stdout:write(addColour(self, string.sub(node.status, 1, 1), ac.red .. ac.bright .. ac.reverse ) )
             end
         end
     end
 
     function TextOutput:displayOneFailedTest( index, failure )
         print(index..") "..failure.testName )
-        print( failure.msg )
-        print( failure.stackTrace )
+        print( addColour(self, failure.msg, ac.cyan ) )
+        print( addColour(self, failure.stackTrace, ac.dim ) )
         print()
     end
 
@@ -1354,7 +1354,7 @@ TextOutput.__class__ = 'TextOutput'
             print()
         end
         self:displayFailedTests()
-        print( M.LuaUnit.statusLine( self.result ) )
+        print(addColour(self, M.LuaUnit.statusLine( self.result ), ac.yellow ) )
         local ignoredString = ""
         if self.result.notPassedCount == 0 then
             print('OK')
@@ -1715,6 +1715,7 @@ end
 
         self.outputType = self.outputType or TextOutput
         self.output = self.outputType.new(self)
+        self.output.COLOURED_OUTPUT = self.COLOURED_OUTPUT
         self.output:startSuite()
     end
 
