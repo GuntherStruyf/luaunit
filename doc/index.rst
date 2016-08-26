@@ -9,7 +9,7 @@ Welcome to LuaUnit's documentation!
 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 3
 
 .. highlight:: lua
 
@@ -29,11 +29,6 @@ format, set verbosity, ...
 Platform support
 ================
 
-LuaUnit works with Lua 5.1, 5.2, 5.3 and luajit (v1 and v2.1). It is tested on Windows Seven, Windows Server 2003 and Ubuntu 14.04 (see 
-continuous build results on `Travis-CI`_  and `AppVeyor`_ ) and should work on all platforms supported by lua.
-It has no other dependency than lua itself. 
-
-
 LuaUnit works with Lua 5.1, LuaJIT 2.0, LuaJIT 2.1 beta, Lua 5.2 and Lua 5.3 . It is tested on Windows Seven, Windows Server 2012 R2 (x64) and Ubuntu 14.04 (see 
 continuous build results on `Travis-CI`_  and `AppVeyor`_  ) and should work on all platforms supported by Lua.
 It has no other dependency than Lua itself.
@@ -51,6 +46,13 @@ https://github.com/bluebird75/luaunit
 
 It is released under the BSD license.
 
+
+Upgrade note
+================
+
+**Important note when upgrading to version 3.1 and above** : there is a break of backward compatibility in version 3.1, assertions functions are no longer exported directly to the global namespace. See :ref:`luaunit-global-asserts` on how to adjust or restore previous behavior.
+
+
 LuaUnit development
 ===================
 
@@ -60,15 +62,17 @@ Version and Changelog
 =====================
 This documentation describes the functionality of LuaUnit v3.2 .
 
-New in version 3.2 - (in progress)
-------------------------------------
-* distinguish between failures (failed assertion) and errors
+New in version 3.2 - 12. Jul 2016
+---------------------------------
+* Add command-line option to stop on first error or failure
+* Distinguish between failures (failed assertion) and errors
 * Support for new versions: Lua 5.3 and LuaJIT (2.0, 2.1 beta)
 * Validation of all lua versions on Travis CI and AppVeyor
-* Compatibility layer with forked luaunit v2.x added
-* added documentation about development process
-* improved support for table containing keys of type table
-* small bug fixes, several internal improvements
+* Add compatibility layer with forked luaunit v2.x
+* Added documentation about development process
+* Improved support for table containing keys of type table
+* Small bug fixes, several internal improvements
+* Available with a Luarock package
 
 New in version 3.1 - 10. Mar 2015
 ---------------------------------
@@ -229,7 +233,13 @@ You always have:
 * the date at which the test suite was started
 * the group to which the function belongs (usually, the name of the function table, and *<TestFunctions>* for all direct test functions)
 * the name of the function being executed
-* a report at the end, with number of executed test, number of non selected tests, number of failures and duration.
+* a report at the end, with number of executed test, number of non selected tests, number of failures, number of errors (if any) and duration.
+
+The difference between failures and errors are:
+
+* luaunit assertion functions generate failures
+* any unexpected error during execution generates an error
+* failures or errors during setup() or teardown() always generate errors
 
 
 You also want to test that when the function receives negative numbers, it generates an error. Use
@@ -673,6 +683,15 @@ they are tried one by one until the name matches (OR combination).
 
 Make sure you esape magic chars like ``+?-*`` with ``%`` .
 
+**Stopping on first error or failure**
+
+If --failure or -f is passed as an option, LuaUnit will stop on the first failure or error and display the test results.
+
+If --error or -e is passed as an option, LuaUnit will stop on the first error (but continue on failures).
+
+**Randomize order**
+
+If --random or -r is passed as an option, LuaUnit will execute tests in random order
 
 **Other Options:**
 
@@ -689,7 +708,8 @@ Assertions functions
 You will now find the list of all assertion functions. For all functions, When an assertion fails, the failure
 message tries to be as informative as possible, by displaying the expectation and value that caused the failure.
 
-.. Note:: see :More on table printing: to know more about tables.
+.. Note:: see :ref:`table-printing` and :ref:`comparing-table-keys-table` for more dealing with recursive tables and tables containing keys of type table.
+
 
 .. _assert-equality:
 
@@ -1009,6 +1029,111 @@ Table assertions
         luaunit.assertItemsEquals( {1,{2,3},4}, {4,{3,2,},1} ) -- assertion fails because {2,3} ~= {3,2}
 
 
+.. _table-printing:
+
+More on table printing
+===========================
+
+When asserting tables equality, by default, the table content is printed in case of failures. LuaUnit tries to print
+tables in a readable format. It is 
+possible to always display the table id along with the content, by setting a module parameter PRINT_TABLE_REF_IN_ERROR_MSG . This
+helps identifying tables:
+
+.. code-block:: lua
+
+    local lu = require('luaunit')
+
+    local t1 = {1,2,3}
+    -- normally, t1 is dispalyed as: "{1,2,3}"
+
+    -- if setting this:
+    lu.PRINT_TABLE_REF_IN_ERROR_MSG = true
+
+    -- display of table t1 becomes: "<table: 0x29ab56> {1,2,3}"
+
+
+.. Note :: table loops
+
+    When displaying table content, it is possible to encounter loops, if for example two table references eachother. In such
+    cases, LuaUnit display the full table content once, along with the table id, and displays only the table id for the looping
+    reference.
+
+**Example:** displaying a table with reference loop
+
+.. code-block:: lua
+
+    local t1 = {}
+    local t2 = {}
+    t1.t2 = t2
+    t1.a = {1,2,3}
+    t2.t1 = t1
+
+    -- when displaying table t1:
+    --   table t1 inside t2 is only displayed by its id because t1 is already being displayed
+    --   table t2 is displayed along with its id because it is part of a loop.
+    -- t1: "<table: 0x29ab56> { a={1,2,3}, t2=<table: 0x27ab23> {t1=<table: 0x29ab56>} }"
+
+
+.. _comparing-table-keys-table:
+
+Comparing tables with keys of type table
+===========================================
+
+
+This is a very uncommon scenario but there are a few programs out there which use tables as keys for other tables. LuaUnit has been adjusted to deal intelligently with this scenario.
+
+A small code block is worth a thousand pictures :
+
+.. code-block:: lua
+
+    local lu = require('luaunit')
+
+    -- let's define two tables
+    t1 = { 1, 2 }
+    t2 = { 1, 2 }
+    lu.assertEquals( t1, t2 ) -- succeeds
+
+    -- let's define three tables, with the two above tables as keys
+    t3 = { t1='a' }
+    t4 = { t2='a' }
+    t5 = { t2='a' }
+
+There are two ways to treat comparison of tables t3 and t4:
+
+**Method 1: table keys are compared by content**
+
+* t3 contain one key: t1
+* t4 contain one key: t2, which has exactly the same content as t1
+* the two keys compare equally with assertEquals, so assertEquals( t3, t4 ) succeeds
+
+**Method 2: table keys are compared by reference**
+
+* t3 contain one key: t1
+* t4 contain one key: t2, which is not the same table as t1, its reference is different
+* the two keys are different because t1 is a different object than t2 so assertEquals( t3, t4 ) fails
+
+Whether method 1 or method 2 is more appropriate is up for debate.
+
+LuaUnit has been adjusted to support both scenarios, with the config variable: *TABLE_EQUALS_KEYBYCONTENT*
+
+* TABLE_EQUALS_KEYBYCONTENT = true (default): method 1 - table keys compared by content
+* TABLE_EQUALS_KEYBYCONTENT = false: method 2 - table keys compared by reference
+
+In any case, assertEquals( t4, t5 ) always succeeds.
+
+To adjust the config, change it into the luaunit table before running any tests:
+
+
+.. code-block:: lua
+
+    local lu = require('luaunit')
+
+    -- define all your tests
+    -- ...
+
+    lu.TABLE_EQUALS_KEYBYCONTENT = false
+    -- run your tests:
+    os.exit( lu.LuaUnit.run() )
 
 .. _developing-luaunit:
 
@@ -1067,7 +1192,7 @@ The main goal of functional tests is to validate that LuaUnit output has not bee
 
 Functional tests perform the following actions:
 
-* Run each of the 3 suites: example_with_luaunit.lua, test_with_xml.lua, run_unit_test.lua (LuaUnit's internal test suite)
+* Run the 2 suites: example_with_luaunit.lua, test_with_err_fail_pass.lua (with various options to have successe, failure and/or errors)
 * Run every suite with all output format, all verbosity
 * Validate the XML output with jenkins/hudson and junit schema
 * Compare the results with the previous output ( archived in test/ref ), with some tricks to make the comparison possible :
@@ -1075,6 +1200,9 @@ Functional tests perform the following actions:
     * adjustment of the file separator to use the same output on Windows and Unix
     * date and test duration is zeroed so that it does not impact the comparison
     * adjust the stack trace format which has changed between Lua 5.1, 5.2 and 5.3
+
+* Run some legacy suites or tricky output to manage and verify output: test_with_xml.lua, , compat_luaunit_v2x.lua, legacy_example_with_luaunit.lua
+
 
 For functional tests to run, *diff* must be available on the command line. *xmllint* is needed to perform the xml validation but
 this step is skipped if *xmllint* can not be found.
@@ -1105,27 +1233,45 @@ The script run_functional_tests.lua supports a --update option, with an optional
     *  ExampleTap: TAP output of example_with_luaunit
     *  ExampleText: text output of example_with_luaunit
     *  ExampleNil: nil output of example_with_luaunit
-    *  UnitXml: XML output of run_unit_tests
-    *  UnitTap: TAP output of run_unit_tests
-    *  UnitText: text output of run_unit_tests 
+    *  ErrFailPassText: text output of test_with_err_fail_pass
+    *  ErrFailPassTap: TAP output of test_with_err_fail_pass
+    *  ErrFailPassXml: XML output of test_with_err_fail_pass
+    *  StopOnError: errFailPassTextStopOnError-1.txt, -2.txt, -3.txt, -4.txt
 
 
-
-
-For example to record a change in the unit-tests:
+For example to record a change in the test_with_err_fail_pass output
 
 .. code-block:: shell
 
-    $ lua run_functional_tests.lua --update UnitXml UnitTap UnitText
-    >>>>>>> Generating test/ref/unitTestsXmlDefault.txt
-    >>>>>>> Generating test/ref/unitTestsXmlQuiet.txt
-    >>>>>>> Generating test/ref/unitTestsXmlVerbose.txt
-    >>>>>>> Generating test/ref/unitTestsTapDefault.txt
-    >>>>>>> Generating test/ref/unitTestsTapQuiet.txt
-    >>>>>>> Generating test/ref/unitTestsTapVerbose.txt
-    >>>>>>> Generating test/ref/unitTestsTextDefault.txt
-    >>>>>>> Generating test/ref/unitTestsTextQuiet.txt
-    >>>>>>> Generating test/ref/unitTestsTextVerbose.txt
+    $ lua run_functional_tests.lua --update ErrFailPassXml ErrFailPassTap ErrFailPassText
+
+    >>>>>>> Generating test/ref/errFailPassXmlDefault.txt
+    >>>>>>> Generating test/ref/errFailPassXmlDefault-success.txt
+    >>>>>>> Generating test/ref/errFailPassXmlDefault-failures.txt
+    >>>>>>> Generating test/ref/errFailPassXmlQuiet.txt
+    >>>>>>> Generating test/ref/errFailPassXmlQuiet-success.txt
+    >>>>>>> Generating test/ref/errFailPassXmlQuiet-failures.txt
+    >>>>>>> Generating test/ref/errFailPassXmlVerbose.txt
+    >>>>>>> Generating test/ref/errFailPassXmlVerbose-success.txt
+    >>>>>>> Generating test/ref/errFailPassXmlVerbose-failures.txt
+    >>>>>>> Generating test/ref/errFailPassTapDefault.txt
+    >>>>>>> Generating test/ref/errFailPassTapDefault-success.txt
+    >>>>>>> Generating test/ref/errFailPassTapDefault-failures.txt
+    >>>>>>> Generating test/ref/errFailPassTapQuiet.txt
+    >>>>>>> Generating test/ref/errFailPassTapQuiet-success.txt
+    >>>>>>> Generating test/ref/errFailPassTapQuiet-failures.txt
+    >>>>>>> Generating test/ref/errFailPassTapVerbose.txt
+    >>>>>>> Generating test/ref/errFailPassTapVerbose-success.txt
+    >>>>>>> Generating test/ref/errFailPassTapVerbose-failures.txt
+    >>>>>>> Generating test/ref/errFailPassTextDefault.txt
+    >>>>>>> Generating test/ref/errFailPassTextDefault-success.txt
+    >>>>>>> Generating test/ref/errFailPassTextDefault-failures.txt
+    >>>>>>> Generating test/ref/errFailPassTextQuiet.txt
+    >>>>>>> Generating test/ref/errFailPassTextQuiet-success.txt
+    >>>>>>> Generating test/ref/errFailPassTextQuiet-failures.txt
+    >>>>>>> Generating test/ref/errFailPassTextVerbose.txt
+    >>>>>>> Generating test/ref/errFailPassTextVerbose-success.txt
+    >>>>>>> Generating test/ref/errFailPassTextVerbose-failures.txt
     $
 
 You can then commit the new files into git.
@@ -1145,88 +1291,8 @@ Typical failures for functional tests
 
 Functional tests may start failing when:
 
-1. Adding a new unit-test
-2. Increasing LuaUnit version
-3. Improving or breaking LuaUnit output
-
-
-**Case 1: adding a new unit-test**
-
-Because functional tests use LuaUnit self tests to verify the output, the output gets broken each time
-a new unit-test is added. This is kind of stupid and should be improved but until it happens, you have to deal with it.
-
-When it happens, functional tests generate tons of diff output, where the main change is the number of tests executed. Please
-carefully verify that this is the only change. If so, fix it with:
-
-.. code-block:: shell
-
-    $ lua run_functional_tests.lua --update UnitXml UnitTap UnitText
-    >>>>>>> Generating test/ref/unitTestsXmlDefault.txt
-    >>>>>>> Generating test/ref/unitTestsXmlQuiet.txt
-    >>>>>>> Generating test/ref/unitTestsXmlVerbose.txt
-    >>>>>>> Generating test/ref/unitTestsTapDefault.txt
-    >>>>>>> Generating test/ref/unitTestsTapQuiet.txt
-    >>>>>>> Generating test/ref/unitTestsTapVerbose.txt
-    >>>>>>> Generating test/ref/unitTestsTextDefault.txt
-    >>>>>>> Generating test/ref/unitTestsTextQuiet.txt
-    >>>>>>> Generating test/ref/unitTestsTextVerbose.txt
-    $
-
-Then commit the updates files.
-
-
-
-
-
-
-
-
-
-
-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
-Annexes
-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
-
-Annex A: More on table printing
-********************************
-
-When asserting tables equality, by default, the table content is printed in case of failures. LuaUnit tries to print
-tables in a readable format. It is 
-possible to always display the table id along with the content, by setting a module parameter PRINT_TABLE_REF_IN_ERROR_MSG . This
-helps identifying tables:
-
-.. code-block:: lua
-
-    local t1 = {1,2,3}
-    -- normally, t1 is dispalyed as: "{1,2,3}"
-
-    -- if setting this:
-    luaunit.PRINT_TABLE_REF_IN_ERROR_MSG = true
-
-    -- display of table t1 becomes: "<table: 0x29ab56> {1,2,3}"
-
-
-.. Note :: table loops
-
-    When displaying table content, it is possible to encounter loops, if for example two table references eachother. In such
-    cases, LuaUnit display the full table content once, along with the table id, and displays only the table id for the looping
-    reference.
-
-**Example:** displaying a table with reference loop
-
-.. code-block:: lua
-
-    local t1 = {}
-    local t2 = {}
-    t1.t2 = t2
-    t1.a = {1,2,3}
-    t2.t1 = t1
-
-    -- when displaying table t1:
-    --   table t1 inside t2 is only displayed by its id because t1 is already being displayed
-    --   table t2 is displayed along with its id because it is part of a loop.
-    -- t1: "<table: 0x29ab56> { a={1,2,3}, t2=<table: 0x27ab23> {t1=<table: 0x29ab56>} }"
-
+1. Increasing LuaUnit version
+2. Improving or breaking LuaUnit output
 
 
 Index and Search page

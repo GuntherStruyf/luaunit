@@ -15,9 +15,9 @@ end
 
 -- This is a bit tricky since the test uses the features that it tests.
 
-lu = require('luaunit')
+local lu = require('luaunit')
 
-Mock = { __class__ = 'Mock' }
+local Mock = { __class__ = 'Mock' }
 
 function Mock.new(runner)
     local t = lu.genericOutput.new(runner)
@@ -57,10 +57,7 @@ TestMock = {}
 --
 ------------------------------------------------------------------
 
-TestLuaUnitUtilities = {} --class
-
-    TestLuaUnitUtilities.__class__ = 'TestLuaUnitUtilities'
-
+TestLuaUnitUtilities = { __class__ = 'TestLuaUnitUtilities' }
 
     function TestLuaUnitUtilities:test_genSortedIndex()
         lu.assertEquals( lu.private.__genSortedIndex( { 2, 5, 7} ), {1,2,3} )
@@ -71,7 +68,7 @@ TestLuaUnitUtilities = {} --class
     end
 
     function TestLuaUnitUtilities:test_sortedNextWorks()
-        t1 = {}
+        local t1 = {}
         t1['aaa'] = 'abc'
         t1['ccc'] = 'def'
         t1['bbb'] = 'cba'
@@ -79,7 +76,7 @@ TestLuaUnitUtilities = {} --class
         -- mimic semantics of "generic for" loop
         local sortedNext, state = lu.private.sortedPairs(t1)
 
-        k, v = sortedNext( state, nil )
+        local k, v = sortedNext( state, nil )
         lu.assertEquals( k, 'aaa' )
         lu.assertEquals( v, 'abc' )
         k, v = sortedNext( state, k )
@@ -117,14 +114,14 @@ TestLuaUnitUtilities = {} --class
     end
 
     function TestLuaUnitUtilities:test_sortedNextWorksOnTwoTables()
-        t1 = { aaa = 'abc', ccc = 'def' }
-        t2 = { ['3'] = '33', ['1'] = '11' }
+        local t1 = { aaa = 'abc', ccc = 'def' }
+        local t2 = { ['3'] = '33', ['1'] = '11' }
 
         local sortedNext, state1, state2
         sortedNext, state1 = lu.private.sortedPairs(t1)
         sortedNext, state2 = lu.private.sortedPairs(t2)
 
-        k, v = sortedNext( state1, nil )
+        local k, v = sortedNext( state1, nil )
         lu.assertEquals( k, 'aaa' )
         lu.assertEquals( v, 'abc' )
 
@@ -141,8 +138,24 @@ TestLuaUnitUtilities = {} --class
         lu.assertEquals( v, '33' )
     end
 
+    function TestLuaUnitUtilities:test_randomizeTable()
+        local t, tref, n, i
+        t, tref, n, i = {}, {}, 20, 1
+        while i <= n do
+            t[i], tref[i] = i, i
+            i = i + 1
+        end
+        lu.assertEquals( #t, n )
+
+        lu.private.randomizeTable( t )
+        lu.assertEquals( #t, n )
+        lu.assertNotEquals( t, tref)
+        table.sort(t)
+        lu.assertEquals( t, tref )
+    end
+
     function TestLuaUnitUtilities:test_strSplitOneCharDelim()
-        t = lu.private.strsplit( '\n', '1\n22\n333\n' )
+        local t = lu.private.strsplit( '\n', '1\n22\n333\n' )
         lu.assertEquals( t[1], '1')
         lu.assertEquals( t[2], '22')
         lu.assertEquals( t[3], '333')
@@ -154,7 +167,7 @@ TestLuaUnitUtilities = {} --class
     end
 
     function TestLuaUnitUtilities:test_strSplit3CharDelim()
-        t = lu.private.strsplit( '2\n3', '1\n22\n332\n3' )
+        local t = lu.private.strsplit( '2\n3', '1\n22\n332\n3' )
         lu.assertEquals( t[1], '1\n2')
         lu.assertEquals( t[2], '3')
         lu.assertEquals( t[3], '')
@@ -175,11 +188,30 @@ TestLuaUnitUtilities = {} --class
         lu.assertEquals( lu.private.prefixString( '12 ', 'ab\ncd\nde'), '12 ab\n12 cd\n12 de' )
     end
 
+    function TestLuaUnitUtilities:test_is_table_equals()
+        -- Make sure that _is_table_equals() doesn't fall for these traps
+        -- (See https://github.com/bluebird75/luaunit/issues/48)
+        local A, B, C = {}, {}, {}
 
-    function TestLuaUnitUtilities:test_table_keytostring()
-        lu.assertEquals( lu.private._table_keytostring( 'a' ), 'a' )
-        lu.assertEquals( lu.private._table_keytostring( 'a0' ), 'a0' )
-        lu.assertEquals( lu.private._table_keytostring( 'a0!' ), '"a0!"' )
+        A.self = A
+        B.self = B
+        lu.assertNotEquals(A, B)
+        lu.assertEquals(A, A)
+
+        A, B = {}, {}
+        A.circular = C
+        B.circular = A
+        C.circular = B
+        lu.assertNotEquals(A, B)
+        lu.assertEquals(C, C)
+
+        A = {}
+        A[{}] = A
+        lu.assertEquals( A, A )
+
+        A = {}
+        A[A] = 1
+        lu.assertEquals( A, A )
     end
 
     function TestLuaUnitUtilities:test_prettystr()
@@ -195,6 +227,14 @@ TestLuaUnitUtilities = {} --class
         lu.assertEquals( lu.prettystr( { [{}] = 1 }), '{{}=1}' )
         lu.assertEquals( lu.prettystr( { 1, [{}] = 1, 2 }), '{1, 2, {}=1}' )
         lu.assertEquals( lu.prettystr( { 1, [{one=1}] = 1, 2, "test", false }), '{1, 2, "test", false, {one=1}=1}' )
+
+        -- test the (private) key string formatting within _table_tostring()
+        lu.assertEquals( lu.prettystr( {a = 1} ), '{a=1}' )
+        lu.assertEquals( lu.prettystr( {a0 = 2} ), '{a0=2}' )
+        lu.assertEquals( lu.prettystr( {['a0!'] = 3} ), '{"a0!"=3}' )
+        lu.assertEquals( lu.prettystr( {["foo\nbar"] = 1}), [[{"foo\nbar"=1}]] )
+        lu.assertEquals( lu.prettystr( {["foo'bar"] = 2}), [[{"foo'bar"=2}]] )
+        lu.assertEquals( lu.prettystr( {['foo"bar'] = 3}), [[{'foo"bar'=3}]] )
     end
 
     function TestLuaUnitUtilities:test_prettystr_adv_tables()
@@ -214,6 +254,10 @@ TestLuaUnitUtilities = {} --class
             '    "hhhhhhhhhhhhhh"',
             '}',
         } , '\n' ) )
+
+        -- make sure that prettystr(t, true) respects "keeponeline"
+        lu.assertTrue( lu.private.hasNewLine( lu.prettystr(t2)) )
+        lu.assertFalse( lu.private.hasNewLine( lu.prettystr(t2, true)) )
 
         local t2bis = { 1,2,3,'12345678901234567890123456789012345678901234567890123456789012345678901234567890', 4,5,6 }
         lu.assertEquals(lu.prettystr(t2bis), [[{
@@ -288,23 +332,36 @@ TestLuaUnitUtilities = {} --class
     function TestLuaUnitUtilities:test_prettystrTableRecursion()
         local t = {}
         t.__index = t
-        lu.assertStrMatches(lu.prettystr(t), "<table: 0?x?[%x]+> {__index=<table: 0?x?[%x]+>}")
+        lu.assertStrMatches(lu.prettystr(t), "(<table: 0?x?[%x]+>) {__index=%1}")
 
         local t1 = {}
         local t2 = {}
         t1.t2 = t2
         t2.t1 = t1
         local t3 = { t1 = t1, t2 = t2 }
-        lu.assertStrMatches(lu.prettystr(t1), "<table: 0?x?[%x]+> {t2=<table: 0?x?[%x]+> {t1=<table: 0?x?[%x]+>}}")
-        lu.assertStrMatches(lu.prettystr(t3), [[<table: 0?x?[%x]+> {
-    t1=<table: 0?x?[%x]+> {t2=<table: 0?x?[%x]+> {t1=<table: 0?x?[%x]+>}},
-    t2=<table: 0?x?[%x]+>
+        lu.assertStrMatches(lu.prettystr(t1), "(<table: 0?x?[%x]+>) {t2=(<table: 0?x?[%x]+>) {t1=%1}}")
+        lu.assertStrMatches(lu.prettystr(t3), [[(<table: 0?x?[%x]+>) {
+    t1=(<table: 0?x?[%x]+>) {t2=(<table: 0?x?[%x]+>) {t1=%2}},
+    t2=%3
 }]])
 
         local t4 = {1,2}
         local t5 = {3,4,t4}
         t4[3] = t5
-        lu.assertStrMatches(lu.prettystr(t5), "<table: 0?x?[%x]+> {3, 4, <table: 0?x?[%x]+> {1, 2, <table: 0?x?[%x]+>}}")
+        lu.assertStrMatches(lu.prettystr(t5), "(<table: 0?x?[%x]+>) {3, 4, (<table: 0?x?[%x]+>) {1, 2, %1}}")
+
+        local t6 = {}
+        t6[t6] = 1
+        lu.assertStrMatches(lu.prettystr(t6), "(<table: 0?x?[%x]+>) {%1=1}" )
+
+        local t7, t8 = {"t7"}, {"t8"}
+        t7[t8] = 1
+        t8[t7] = 2
+        lu.assertStrMatches(lu.prettystr(t7), '(<table: 0?x?[%x]+>) {"t7", (<table: 0?x?[%x]+>) {"t8", %1=2}=1}')
+
+        local t9 = {"t9", {}}
+        t9[{t9}] = 1
+        lu.assertStrMatches(lu.prettystr(t9, true), '(<table: 0?x?[%x]+>) {"t9", (<table: 0?x?[%x]+>) {}, (<table: 0?x?[%x]+>) {%1}=1}')
     end
 
     function TestLuaUnitUtilities:test_prettystrPadded()
@@ -416,15 +473,10 @@ TestLuaUnitUtilities = {} --class
         lu.assertNil( lu.LuaUnit.asFunction( "not a function" ) )
     end
 
-    function TestLuaUnitUtilities:test_IsClassMethod()
-        lu.assertEquals( lu.LuaUnit.isClassMethod( 'toto' ), false )
-        lu.assertEquals( lu.LuaUnit.isClassMethod( 'toto.titi' ), true )
-    end
-
     function TestLuaUnitUtilities:test_splitClassMethod()
         lu.assertEquals( lu.LuaUnit.splitClassMethod( 'toto' ), nil )
-        v1, v2 = lu.LuaUnit.splitClassMethod( 'toto.titi' )
-        lu.assertEquals( {v1, v2}, {'toto', 'titi'} )
+        lu.assertEquals( {lu.LuaUnit.splitClassMethod( 'toto.titi' )},
+                         {'toto', 'titi'} )
     end
 
     function TestLuaUnitUtilities:test_isTestName()
@@ -481,9 +533,9 @@ TestLuaUnitUtilities = {} --class
     end
 
     function TestLuaUnitUtilities:test_applyPatternFilter()
-        myTestToto1Value = { 'MyTestToto1.test1', MyTestToto1 }
+        local myTestToto1Value = { 'MyTestToto1.test1', MyTestToto1 }
 
-        included, excluded = lu.LuaUnit.applyPatternFilter( nil, { myTestToto1Value } )
+        local included, excluded = lu.LuaUnit.applyPatternFilter( nil, { myTestToto1Value } )
         lu.assertEquals( excluded, {} )
         lu.assertEquals( included, { myTestToto1Value } )
 
@@ -629,6 +681,30 @@ TestLuaUnitUtilities = {} --class
 
 ------------------------------------------------------------------
 --
+--                        Outputter Tests
+--
+------------------------------------------------------------------
+
+TestLuaUnitOutputters = { __class__ = 'TestOutputters' }
+
+    -- JUnitOutput:startSuite() can raise errors on its own, cover those
+    function TestLuaUnitOutputters:testJUnitOutputErrors()
+        local runner = lu.LuaUnit.new()
+        runner:setOutputType('junit')
+        local outputter = runner.outputType.new(runner)
+
+        -- missing file name
+        lu.assertErrorMsgContains('With Junit, an output filename must be supplied',
+            outputter.startSuite, outputter)
+
+        -- test adding .xml extension, catch output error
+        outputter.fname = '/tmp/nonexistent.dir/foobar'
+        lu.assertErrorMsgContains('Could not open file for writing: /tmp/nonexistent.dir/foobar.xml',
+            outputter.startSuite, outputter)
+    end
+
+------------------------------------------------------------------
+--
 --                  Assertion Tests              
 --
 ------------------------------------------------------------------
@@ -654,13 +730,11 @@ local function assertBadMethodNil( ... )
     lu.assertErrorMsgMatches( ".* attempt to call .*a nil value.*", ... )
 end
 
-TestLuaUnitAssertions = {} --class
-
-    TestLuaUnitAssertions.__class__ = 'TestLuaUnitAssertions'
+TestLuaUnitAssertions = { __class__ = 'TestLuaUnitAssertions' }
 
     function TestLuaUnitAssertions:test_assertEquals()
-        f = function() return true end
-        g = function() return true end
+        local f = function() return true end
+        local g = function() return true end
 
         lu.assertEquals( 1, 1 )
         lu.assertEquals( "abc", "abc" )
@@ -677,9 +751,13 @@ TestLuaUnitAssertions = {} --class
         lu.TABLE_EQUALS_KEYBYCONTENT = false
         assertFailure( lu.assertEquals, {[{}] = 1}, { [{}] = 1})
         assertFailure( lu.assertEquals, {[{one=1, two=2}] = 1}, { [{two=2, one=1}] = 1})
+        assertFailure( lu.assertEquals, {[{1}]=2, [{1}]=3}, {[{1}]=3, [{1}]=2} )
         lu.TABLE_EQUALS_KEYBYCONTENT = true
         lu.assertEquals( {[{}] = 1}, { [{}] = 1})
         lu.assertEquals( {[{one=1, two=2}] = 1}, { [{two=2, one=1}] = 1})
+        lu.assertEquals( {[{1}]=2, [{1}]=3}, {[{1}]=3, [{1}]=2} )
+        -- try the other order as well, in case pairs() returns items reversed in the test above
+        lu.assertEquals( {[{1}]=2, [{1}]=3}, {[{1}]=2, [{1}]=3} )
 
         assertFailure( lu.assertEquals, 1, 2)
         assertFailure( lu.assertEquals, 1, "abc" )
@@ -705,11 +783,14 @@ TestLuaUnitAssertions = {} --class
         assertFailure( lu.assertEquals, {[{}] = 1}, {[{one=1}] = 2})
         assertFailure( lu.assertEquals, {[{}] = 1}, {[{}] = 1, 2})
         assertFailure( lu.assertEquals, {[{}] = 1}, {[{}] = 1, [{}] = 1})
+        assertFailure( lu.assertEquals, {[{"one"}]=1}, {[{"one", 1}]=2} )
+        assertFailure( lu.assertEquals, {[{"one"}]=1,[{"one"}]=1}, {[{"one"}]=1} )
         lu.TABLE_EQUALS_KEYBYCONTENT = config_saved
     end
 
     function TestLuaUnitAssertions:test_assertAlmostEquals()
         lu.assertAlmostEquals( 1, 1, 0.1 )
+        lu.assertAlmostEquals( 1, 1, 0 ) -- zero margin
 
         lu.assertAlmostEquals( 1, 1.1, 0.2 )
         lu.assertAlmostEquals( -1, -1.1, 0.2 )
@@ -724,13 +805,12 @@ TestLuaUnitAssertions = {} --class
         lu.assertErrorMsgContains( "must supply only number arguments", lu.assertAlmostEquals, -1, 1, nil )
         lu.assertErrorMsgContains( "must supply only number arguments", lu.assertAlmostEquals, -1, nil, 0 )
         lu.assertErrorMsgContains( "must supply only number arguments", lu.assertAlmostEquals, nil, 1, 0 )
-        lu.assertErrorMsgContains( "margin must be positive", lu.assertAlmostEquals, 1, 1.1, 0 )
-        lu.assertErrorMsgContains( "margin must be positive", lu.assertAlmostEquals, 1, 1.1, -0.1 )
+        lu.assertErrorMsgContains( "margin must not be negative", lu.assertAlmostEquals, 1, 1.1, -0.1 )
     end
 
     function TestLuaUnitAssertions:test_assertNotEquals()
-        f = function() return true end
-        g = function() return true end
+        local f = function() return true end
+        local g = function() return true end
 
         lu.assertNotEquals( 1, 2 )
         lu.assertNotEquals( "abc", 2 )
@@ -755,6 +835,7 @@ TestLuaUnitAssertions = {} --class
 
     function TestLuaUnitAssertions:test_assertNotAlmostEquals()
         lu.assertNotAlmostEquals( 1, 1.2, 0.1 )
+        lu.assertNotAlmostEquals( 1, 1.01, 0 ) -- zero margin
 
         lu.assertNotAlmostEquals( 1, 1.3, 0.2 )
         lu.assertNotAlmostEquals( -1, -1.3, 0.2 )
@@ -769,8 +850,7 @@ TestLuaUnitAssertions = {} --class
         lu.assertErrorMsgContains( "must supply only number arguments", lu.assertNotAlmostEquals, -1, 1, nil )
         lu.assertErrorMsgContains( "must supply only number arguments", lu.assertNotAlmostEquals, -1, nil, 0 )
         lu.assertErrorMsgContains( "must supply only number arguments", lu.assertNotAlmostEquals, nil, 1, 0 )
-        lu.assertErrorMsgContains( "margin must be positive", lu.assertNotAlmostEquals, 1, 1.1, 0 )
-        lu.assertErrorMsgContains( "margin must be positive", lu.assertNotAlmostEquals, 1, 1.1, -0.1 )
+        lu.assertErrorMsgContains( "margin must not be negative", lu.assertNotAlmostEquals, 1, 1.1, -0.1 )
     end
 
     function TestLuaUnitAssertions:test_assertNotEqualsDifferentTypes2()
@@ -1005,7 +1085,7 @@ TestLuaUnitAssertions = {} --class
     end
 
     function TestLuaUnitAssertions:test_assertIsFunction()
-        f = function() return true end
+        local f = function() return true end
 
         assertFailure(lu.assertIsFunction, 1)
         assertFailure(lu.assertIsFunction, 1.4)
@@ -1107,7 +1187,7 @@ TestLuaUnitAssertions = {} --class
     end
 
     function TestLuaUnitAssertions:test_assertNotIsFunction()
-        f = function() return true end
+        local f = function() return true end
 
         lu.assertNotIsFunction( 1)
         lu.assertNotIsFunction( 1.4)
@@ -1157,6 +1237,8 @@ TestLuaUnitAssertions = {} --class
         local s1='toto'
         local s2='toto'
         local s3='to'..'to'
+        local b1=true
+        local b2=false
 
         lu.assertIs(1,1)
         lu.assertIs(f,f)
@@ -1165,6 +1247,8 @@ TestLuaUnitAssertions = {} --class
         lu.assertIs(s1, s3)
         lu.assertIs(t1,t1)
         lu.assertIs(t4,t4)
+        lu.assertIs(b1, true)
+        lu.assertIs(b2, false)
 
         assertFailure(lu.assertIs, 1, 2)
         assertFailure(lu.assertIs, 1.4, 1)
@@ -1174,6 +1258,7 @@ TestLuaUnitAssertions = {} --class
         assertFailure(lu.assertIs, {1,2,3}, f)
         assertFailure(lu.assertIs, f, g)
         assertFailure(lu.assertIs, t2,t3 )
+        assertFailure(lu.assertIs, b2, nil)
     end
 
     function TestLuaUnitAssertions:test_assertNotIs()
@@ -1185,6 +1270,8 @@ TestLuaUnitAssertions = {} --class
         local t4= {a=1,{1,2},day="today"}
         local s1='toto'
         local s2='toto'
+        local b1=true
+        local b2=false
 
         assertFailure( lu.assertNotIs, 1,1 )
         assertFailure( lu.assertNotIs, f,f )
@@ -1192,6 +1279,8 @@ TestLuaUnitAssertions = {} --class
         assertFailure( lu.assertNotIs, t4,t4)
         assertFailure( lu.assertNotIs, s1,s2 )
         assertFailure( lu.assertNotIs, 'toto', 'toto' )
+        assertFailure( lu.assertNotIs, b1, true )
+        assertFailure( lu.assertNotIs, b2, false )
 
         lu.assertNotIs(1, 2)
         lu.assertNotIs(1.4, 1)
@@ -1201,6 +1290,9 @@ TestLuaUnitAssertions = {} --class
         lu.assertNotIs({1,2,3}, f)
         lu.assertNotIs(f, g)
         lu.assertNotIs(t2,t3)
+        lu.assertNotIs(b1, false)
+        lu.assertNotIs(b2, true)
+        lu.assertNotIs(b2, nil)
     end
 
     function TestLuaUnitAssertions:test_assertTableNum()
@@ -1367,8 +1459,7 @@ TestLuaUnitAssertionsError = {}
 --
 ------------------------------------------------------------------
 
-TestLuaUnitErrorMsg = {} --class
-    TestLuaUnitErrorMsg.__class__ = 'TestLuaUnitErrorMsg'
+TestLuaUnitErrorMsg = { __class__ = 'TestLuaUnitErrorMsg' }
 
     function TestLuaUnitErrorMsg:setUp()
         self.old_ORDER_ACTUAL_EXPECTED = lu.ORDER_ACTUAL_EXPECTED
@@ -1601,6 +1692,7 @@ TestLuaUnitErrorMsg = {} --class
 --
 ------------------------------------------------------------------
 
+local executedTests
 
 MyTestToto1 = {} --class
     function MyTestToto1:test1() table.insert( executedTests, "MyTestToto1:test1" ) end
@@ -1626,9 +1718,7 @@ function MyTestFunction()
     table.insert( executedTests, "MyTestFunction" ) 
 end
 
-TestLuaUnitExecution = {} --class
-
-    TestLuaUnitExecution.__class__ = 'TestLuaUnitExecution'
+TestLuaUnitExecution = { __class__ = 'TestLuaUnitExecution' }
 
     function TestLuaUnitExecution:tearDown()
         executedTests = {}
@@ -1642,7 +1732,7 @@ TestLuaUnitExecution = {} --class
     end
 
     function TestLuaUnitExecution:test_collectTests()
-        allTests = lu.LuaUnit.collectTests()
+        local allTests = lu.LuaUnit.collectTests()
         lu.assertEquals( allTests, {"MyTestFunction", "MyTestOk", "MyTestToto1", "MyTestToto2","MyTestWithErrorsAndFailures"})
     end
 
@@ -1682,12 +1772,12 @@ TestLuaUnitExecution = {} --class
     end
 
     function TestLuaUnitExecution:testRunSomeTestByLocalInstance( )
-        MyLocalTestToto1 = {} --class
+        local MyLocalTestToto1 = {} --class
         function MyLocalTestToto1:test1() table.insert( executedTests, "MyLocalTestToto1:test1" ) end
-        MyLocalTestToto2 = {} --class
+        local MyLocalTestToto2 = {} --class
         function MyLocalTestToto2:test1() table.insert( executedTests, "MyLocalTestToto2:test1" ) end
         function MyLocalTestToto2:test2() table.insert( executedTests, "MyLocalTestToto2:test2" ) end
-        function MyLocalTestFunction() table.insert( executedTests, "MyLocalTestFunction" ) end
+        local function MyLocalTestFunction() table.insert( executedTests, "MyLocalTestFunction" ) end
  
         lu.assertEquals( #executedTests, 0 )
         local runner = lu.LuaUnit.new()
@@ -1706,7 +1796,7 @@ TestLuaUnitExecution = {} --class
     function TestLuaUnitExecution:testRunReturnsNumberOfFailures()
         local runner = lu.LuaUnit.new()
         runner:setOutputType( "NIL" )
-        ret = runner:runSuite( 'MyTestWithErrorsAndFailures' )
+        local ret = runner:runSuite( 'MyTestWithErrorsAndFailures' )
         lu.assertEquals(ret, 3)
 
         ret = runner:runSuite( 'MyTestToto1' )
@@ -1825,7 +1915,7 @@ TestLuaUnitExecution = {} --class
             function MyTestWithSetupFailure:test1()    table.insert( myExecutedTests, 'test1' ) end
             function MyTestWithSetupFailure:tearDown() table.insert( myExecutedTests, 'tearDown' ) lu.assertEquals( 'b', 'c')   end
 
-        runner = lu.LuaUnit.new()
+        local runner = lu.LuaUnit.new()
         runner:setOutputType( "NIL" )
         runner:runSuiteByInstances( { { 'MyTestWithSetupFailure', MyTestWithSetupFailure } } )
         lu.assertEquals( runner.result.notPassedCount, 1 )
@@ -1847,7 +1937,7 @@ TestLuaUnitExecution = {} --class
             function MyTestWithSetupFailure:test1()    table.insert( myExecutedTests, 'test1' ) end
             function MyTestWithSetupFailure:tearDown() table.insert( myExecutedTests, 'tearDown' ) lu.assertEquals( 'b', 'c')   end
 
-        runner = lu.LuaUnit.new()
+        local runner = lu.LuaUnit.new()
         runner:setOutputType( "NIL" )
         runner:runSuiteByInstances( { { 'MyTestWithSetupFailure', MyTestWithSetupFailure } } )
         lu.assertEquals( runner.result.notPassedCount, 1 )
@@ -1869,7 +1959,7 @@ TestLuaUnitExecution = {} --class
             function MyTestWithSetupFailure:test1()    table.insert( myExecutedTests, 'test1' ) lu.assertEquals( 'b', 'c')  end
             function MyTestWithSetupFailure:tearDown() table.insert( myExecutedTests, 'tearDown' ) lu.assertEquals( 'b', 'c')   end
 
-        runner = lu.LuaUnit.new()
+        local runner = lu.LuaUnit.new()
         runner:setOutputType( "NIL" )
         runner:runSuiteByInstances( { { 'MyTestWithSetupFailure', MyTestWithSetupFailure } } )
         lu.assertEquals( runner.result.notPassedCount, 1 )
@@ -1891,7 +1981,7 @@ TestLuaUnitExecution = {} --class
             function MyTestWithSetupFailure:test1()    table.insert( myExecutedTests, 'test1' ) lu.assertEquals( 'b', 'c')  end
             function MyTestWithSetupFailure:tearDown() table.insert( myExecutedTests, 'tearDown' ) lu.assertEquals( 'b', 'c')   end
 
-        runner = lu.LuaUnit.new()
+        local runner = lu.LuaUnit.new()
         runner:setOutputType( "NIL" )
         runner:runSuiteByInstances( { { 'MyTestWithSetupFailure', MyTestWithSetupFailure } } )
         lu.assertEquals( runner.result.notPassedCount, 1 )
@@ -1935,7 +2025,7 @@ TestLuaUnitExecution = {} --class
             function MyTestWithSetupError:test1()    table.insert( myExecutedTests, 'test1' ) end
             function MyTestWithSetupError:tearDown() table.insert( myExecutedTests, 'tearDown' ) error('teardown error')   end
 
-        runner = lu.LuaUnit.new()
+        local runner = lu.LuaUnit.new()
         runner:setOutputType( "NIL" )
         runner:runSuiteByInstances( { { 'MyTestWithSetupError', MyTestWithSetupError } } )
         lu.assertEquals( runner.result.notPassedCount, 1 )
@@ -1957,7 +2047,7 @@ TestLuaUnitExecution = {} --class
             function MyTestWithSetupError:test1()    table.insert( myExecutedTests, 'test1' ) end
             function MyTestWithSetupError:tearDown() table.insert( myExecutedTests, 'tearDown' ) error('teardown error')   end
 
-        runner = lu.LuaUnit.new()
+        local runner = lu.LuaUnit.new()
         runner:setOutputType( "NIL" )
         runner:runSuiteByInstances( { { 'MyTestWithSetupError', MyTestWithSetupError } } )
         lu.assertEquals( runner.result.notPassedCount, 1 )
@@ -1979,7 +2069,7 @@ TestLuaUnitExecution = {} --class
             function MyTestWithSetupError:test1()    table.insert( myExecutedTests, 'test1' ) error('test error')  end
             function MyTestWithSetupError:tearDown() table.insert( myExecutedTests, 'tearDown' ) error('teardown error')   end
 
-        runner = lu.LuaUnit.new()
+        local runner = lu.LuaUnit.new()
         runner:setOutputType( "NIL" )
         runner:runSuiteByInstances( { { 'MyTestWithSetupError', MyTestWithSetupError } } )
         lu.assertEquals( runner.result.notPassedCount, 1 )
@@ -2001,7 +2091,7 @@ TestLuaUnitExecution = {} --class
             function MyTestWithSetupError:test1()    table.insert( myExecutedTests, 'test1' ) error('test error') end
             function MyTestWithSetupError:tearDown() table.insert( myExecutedTests, 'tearDown' ) error('teardown error')   end
 
-        runner = lu.LuaUnit.new()
+        local runner = lu.LuaUnit.new()
         runner:setOutputType( "NIL" )
         runner:runSuiteByInstances( { { 'MyTestWithSetupError', MyTestWithSetupError } } )
         lu.assertEquals( runner.result.notPassedCount, 1 )
@@ -2024,7 +2114,7 @@ TestLuaUnitExecution = {} --class
             function MyTestWithSetupError:test1()    table.insert( myExecutedTests, 'test1' ) end
             function MyTestWithSetupError:tearDown() table.insert( myExecutedTests, 'tearDown' ) error('teardown error')   end
 
-        runner = lu.LuaUnit.new()
+        local runner = lu.LuaUnit.new()
         runner:setOutputType( "NIL" )
         runner:runSuiteByInstances( { { 'MyTestWithSetupError', MyTestWithSetupError } } )
         lu.assertEquals( runner.result.notPassedCount, 1 )
@@ -2047,7 +2137,7 @@ TestLuaUnitExecution = {} --class
             function MyTestWithSetupError:test1()    table.insert( myExecutedTests, 'test1' ) end
             function MyTestWithSetupError:tearDown() table.insert( myExecutedTests, 'tearDown' ) lu.assertEquals( 'a', 'b')   end
 
-        runner = lu.LuaUnit.new()
+        local runner = lu.LuaUnit.new()
         runner:setOutputType( "NIL" )
         runner:runSuiteByInstances( { { 'MyTestWithSetupError', MyTestWithSetupError } } )
         lu.assertEquals( runner.result.notPassedCount, 1 )
@@ -2070,7 +2160,7 @@ TestLuaUnitExecution = {} --class
             function MyTestWithSetupError:test1()    table.insert( myExecutedTests, 'test1' ) error('test error') end
             function MyTestWithSetupError:tearDown() table.insert( myExecutedTests, 'tearDown' ) lu.assertEquals( 'a', 'b')   end
 
-        runner = lu.LuaUnit.new()
+        local runner = lu.LuaUnit.new()
         runner:setOutputType( "NIL" )
         runner:runSuiteByInstances( { { 'MyTestWithSetupError', MyTestWithSetupError } } )
         lu.assertEquals( runner.result.notPassedCount, 1 )
@@ -2094,7 +2184,7 @@ TestLuaUnitExecution = {} --class
             function MyTestWithSetupError:test1()    table.insert( myExecutedTests, 'test1' ) lu.assertEquals( 'a', 'b') end
             function MyTestWithSetupError:tearDown() table.insert( myExecutedTests, 'tearDown' ) error('teardown error')   end
 
-        runner = lu.LuaUnit.new()
+        local runner = lu.LuaUnit.new()
         runner:setOutputType( "NIL" )
         runner:runSuiteByInstances( { { 'MyTestWithSetupError', MyTestWithSetupError } } )
         lu.assertEquals( runner.result.notPassedCount, 1 )
@@ -2116,7 +2206,7 @@ TestLuaUnitExecution = {} --class
         local runner = lu.LuaUnit.new()
         runner.outputType = Mock
         runner:runSuite( 'MyTestWithErrorsAndFailures', 'MyTestOk' )
-        m = runner.output
+        local m = runner.output
 
         lu.assertEquals( m.calls[1][1], 'startSuite' )
         lu.assertEquals(#m.calls[1], 2 )
@@ -2234,7 +2324,7 @@ TestLuaUnitExecution = {} --class
 
     function TestLuaUnitExecution:test_filterWithPattern()
 
-        runner = lu.LuaUnit.new()
+        local runner = lu.LuaUnit.new()
         runner:setOutputType( "NIL" )
         runner:runSuite('-p', 'Function', '-p', 'Toto.' )
         lu.assertEquals( executedTests[1], "MyTestFunction" )
@@ -2247,6 +2337,14 @@ TestLuaUnitExecution = {} --class
         lu.assertEquals( #executedTests, 7)
     end
 
+    function TestLuaUnitExecution:test_endSuiteTwice()
+        local runner = lu.LuaUnit.new()
+        runner:setOutputType( "NIL" )
+        runner:runSuite( 'MyTestWithErrorsAndFailures', 'MyTestOk' )
+        lu.assertErrorMsgContains('suite was already ended',
+            runner.endSuite, runner)
+    end
+
 
 
 ------------------------------------------------------------------
@@ -2255,9 +2353,7 @@ TestLuaUnitExecution = {} --class
 --
 ------------------------------------------------------------------
 
-TestLuaUnitResults = {} -- class
-
-    TestLuaUnitResults.__class__ = 'TestLuaUnitResults'
+TestLuaUnitResults = { __class__ = 'TestLuaUnitResults' }
 
     function TestLuaUnitResults:tearDown()
         executedTests = {}
@@ -2272,7 +2368,7 @@ TestLuaUnitResults = {} -- class
 
     function TestLuaUnitResults:test_statusLine()
         -- full success
-        r = {runCount=5, duration=0.17, passedCount=5, notPassedCount=0, failureCount=0, errorCount=0, nonSelectedCount=0}
+        local r = {runCount=5, duration=0.17, passedCount=5, notPassedCount=0, failureCount=0, errorCount=0, nonSelectedCount=0}
         lu.assertEquals( lu.LuaUnit.statusLine(r), 'Ran 5 tests in 0.170 seconds, 5 successes, 0 failures')
 
         -- 1 failure, nothing more displayed
@@ -2297,7 +2393,7 @@ TestLuaUnitResults = {} -- class
     end
 
     function TestLuaUnitResults:test_nodeStatus()
-        es = lu.NodeStatus.new()
+        local es = lu.NodeStatus.new()
         lu.assertEquals( es.status, lu.NodeStatus.PASS )
         lu.assertTrue( es:isPassed() )
         lu.assertNil( es.msg )
@@ -2313,7 +2409,7 @@ TestLuaUnitResults = {} -- class
         lu.assertEquals( es.stackTrace, 'stackTraceToto' )
         lu.assertStrContains( es:statusXML(), "<failure" )
 
-        es2 = lu.NodeStatus.new()
+        local es2 = lu.NodeStatus.new()
         lu.assertEquals( es2.status, lu.NodeStatus.PASS )
         lu.assertNil( es2.msg )
         lu.assertNil( es2.stackTrace )
@@ -2470,7 +2566,7 @@ TestLuaUnitResults = {} -- class
         runner.outputType = MyMocker
         runner:runSuite( 'MyTestWithErrorsAndFailures' )
 
-        m = runner.output
+        local m = runner.output
         lu.assertEquals( m.calls[1][1], 'startSuite' )
         lu.assertEquals(#m.calls[1], 2 )
     end

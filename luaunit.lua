@@ -27,6 +27,7 @@ end
 M.private = {}
 
 M.VERSION='3.2'
+M._VERSION=M.VERSION -- For LuaUnit v2 compatibility
 
 --[[ Some people like assertEquals( actual, expected ) and some people prefer 
 assertEquals( expected, actual ).
@@ -60,6 +61,7 @@ Options:
   -q, --quiet:            Set verbosity to minimum
   -e, --error:            Stop on first error
   -f, --failure:          Stop on first failure or error
+  -r, --random            Run tests in random order
   -o, --output OUTPUT:    Set output type to OUTPUT
                           Possible values: text, tap, junit, nil
   -n, --name NAME:        For junit only, mandatory name of xml file
@@ -75,6 +77,20 @@ Options:
 --                 general utility functions
 --
 ----------------------------------------------------------------
+
+local function pcall_or_abort(func, ...)
+    -- unpack is a global function for Lua 5.1, otherwise use table.unpack
+    local unpack = rawget(_G, "unpack") or table.unpack
+    local result = {pcall(func, ...)}
+    if not result[1] then
+        -- an error occurred
+        print(result[2]) -- error message
+        print()
+        print(M.USAGE)
+        os.exit(-1)
+    end
+    return unpack(result, 2)
+end
 
 local crossTypeOrdering = {
     number = 1,
@@ -124,6 +140,7 @@ local function sortedNext(state, control)
     --print("sortedNext: control = "..tostring(control) )
     if control == nil then
         -- start of iteration
+        state.count = #state.sortedIdx
         state.lastIdx = 1
         key = state.sortedIdx[1]
         return key, state.t[key]
@@ -133,8 +150,7 @@ local function sortedNext(state, control)
     if control ~= state.sortedIdx[state.lastIdx] then
         -- strange, we have to find the next value by ourselves
         -- the key table is sorted in crossTypeSort() order! -> use bisection
-        local count = #state.sortedIdx
-        local lower, upper = 1, count
+        local lower, upper = 1, state.count
         repeat
             state.lastIdx = math.modf((lower + upper) / 2)
             key = state.sortedIdx[state.lastIdx]
@@ -148,7 +164,7 @@ local function sortedNext(state, control)
             end
         until lower > upper
         if lower > upper then -- only true if the key wasn't found, ...
-            state.lastIdx = count -- ... so ensure no match for the code below
+            state.lastIdx = state.count -- ... so ensure no match in code below
         end
     end
 
@@ -171,11 +187,25 @@ local function sortedPairs(tbl)
 end
 M.private.sortedPairs = sortedPairs
 
+-- seed the random with a strongly varying seed
+math.randomseed(os.clock()*1E11)
+
+local function randomizeTable( t )
+    -- randomize the item orders of the table t
+    for i = #t, 2, -1 do
+        local j = math.random(i)
+        if i ~= j then
+            t[i], t[j] = t[j], t[i]
+        end
+    end
+end
+M.private.randomizeTable = randomizeTable
+ 
 local function strsplit(delimiter, text)
--- Split text into a list consisting of the strings in text,
--- separated by strings matching delimiter (which may be a pattern).
--- example: strsplit(",%s*", "Anna, Bob, Charlie,Dolores")
-    if string.find("", delimiter, 1, true) then -- this would result in endless loops
+-- Split text into a list consisting of the strings in text, separated
+-- by strings matching delimiter (which may _NOT_ be a pattern).
+-- Example: strsplit(", ", "Anna, Bob, Charlie, Dolores")
+    if delimiter == "" then -- this would result in endless loops
         error("delimiter matches empty string!")
     end
     local list, pos, first, last = {}, 1
@@ -201,7 +231,7 @@ M.private.hasNewLine = hasNewLine
 
 local function prefixString( prefix, s )
     -- Prefix all the lines of s with prefix
-    return prefix .. table.concat(strsplit('\n', s), '\n' .. prefix)
+    return prefix .. string.gsub(s, '\n', '\n' .. prefix)
 end
 M.private.prefixString = prefixString
 
@@ -350,7 +380,8 @@ local function prettystr_sub(v, indentLevel, keeponeline, printTableRefs, recurs
         --if v.__class__ then
         --    return string.gsub( tostring(v), 'table', v.__class__ )
         --end
-        return M.private._table_tostring(v, indentLevel, printTableRefs, recursionTable)
+        return M.private._table_tostring(v, indentLevel, keeponeline,
+                                            printTableRefs, recursionTable)
     end
 
     return tostring(v)
@@ -399,25 +430,24 @@ local function prettystrPadded(value1, value2, suffix_a, suffix_b)
 end
 M.private.prettystrPadded = prettystrPadded
 
-local function _table_keytostring(k)
-    -- like prettystr but do not enclose with "" if the string is just alphanumerical
-    -- this is better for displaying table keys who are often simple strings
-    if "string" == type(k) and k:match("^[_%a][_%w]*$") then
-        return k
-    end
-    return prettystr(k)
-end
-M.private._table_keytostring = _table_keytostring
-
 local TABLE_TOSTRING_SEP = ", "
 local TABLE_TOSTRING_SEP_LEN = string.len(TABLE_TOSTRING_SEP)
 
-local function _table_tostring( tbl, indentLevel, printTableRefs, recursionTable )
+local function _table_tostring( tbl, indentLevel, keeponeline, printTableRefs, recursionTable )
     printTableRefs = printTableRefs or M.PRINT_TABLE_REF_IN_ERROR_MSG
     recursionTable = recursionTable or {}
     recursionTable[tbl] = true
 
     local result, dispOnMultLines = {}, false
+
+    -- like prettystr but do not enclose with "" if the string is just alphanumerical
+    -- this is better for displaying table keys who are often simple strings
+    local function keytostring(k)
+        if "string" == type(k) and k:match("^[_%a][_%w]*$") then
+            return k
+        end
+        return prettystr_sub(k, indentLevel+1, true, printTableRefs, recursionTable)
+    end
 
     local entry, count, seq_index = nil, 0, 1
     for k, v in sortedPairs( tbl ) do
@@ -425,37 +455,44 @@ local function _table_tostring( tbl, indentLevel, printTableRefs, recursionTable
             -- for the sequential part of tables, we'll skip the "<key>=" output
             entry = ''
             seq_index = seq_index + 1
+        elseif recursionTable[k] then
+            -- recursion in the key detected
+            recursionTable.recursionDetected = true
+            entry = "<"..tostring(k)..">="
         else
-            entry = _table_keytostring( k ) .. "="
+            entry = keytostring(k) .. "="
         end
-        if recursionTable[v] then -- recursion detected!
+        if recursionTable[v] then
+            -- recursion in the value detected!
             recursionTable.recursionDetected = true
             entry = entry .. "<"..tostring(v)..">"
         else
             entry = entry ..
-                prettystr_sub( v, indentLevel+1, true, printTableRefs, recursionTable )
+                prettystr_sub( v, indentLevel+1, keeponeline, printTableRefs, recursionTable )
         end
         count = count + 1
         result[count] = entry
     end
 
-    -- set dispOnMultLines if the maximum LINE_LENGTH would be exceeded
-    local totalLength = 0
-    for k, v in ipairs( result ) do
-        totalLength = totalLength + string.len( v )
-        if totalLength >= M.LINE_LENGTH then
-            dispOnMultLines = true
-            break
+    if not keeponeline then
+        -- set dispOnMultLines if the maximum LINE_LENGTH would be exceeded
+        local totalLength = 0
+        for k, v in ipairs( result ) do
+            totalLength = totalLength + string.len( v )
+            if totalLength >= M.LINE_LENGTH then
+                dispOnMultLines = true
+                break
+            end
         end
-    end
 
-    if not dispOnMultLines then
-        -- adjust with length of separator(s):
-        -- two items need 1 sep, three items two seps, ... plus len of '{}'
-        if count > 0 then
-            totalLength = totalLength + TABLE_TOSTRING_SEP_LEN * (count - 1)
+        if not dispOnMultLines then
+            -- adjust with length of separator(s):
+            -- two items need 1 sep, three items two seps, ... plus len of '{}'
+            if count > 0 then
+                totalLength = totalLength + TABLE_TOSTRING_SEP_LEN * (count - 1)
+            end
+            dispOnMultLines = totalLength + 2 >= M.LINE_LENGTH
         end
-        dispOnMultLines = totalLength + 2 >= M.LINE_LENGTH
     end
 
     -- now reformat the result table (currently holding element strings)
@@ -479,15 +516,14 @@ local function _table_contains(t, element)
         local type_e = type(element)
         for _, value in pairs(t) do
             if type(value) == type_e then
+                if value == element then
+                    return true
+                end
                 if type_e == 'table' then
                     -- if we wanted recursive items content comparison, we could use
                     -- _is_table_items_equals(v, expected) but one level of just comparing
                     -- items is sufficient
                     if M.private._is_table_equals( value, element ) then
-                        return true
-                    end
-                else
-                    if value == element then
                         return true
                     end
                 end
@@ -498,88 +534,165 @@ local function _table_contains(t, element)
 end
 
 local function _is_table_items_equals(actual, expected )
-    if (type(actual) == 'table') and (type(expected) == 'table') then
-        for k,v in pairs(actual) do
+    local type_a, type_e = type(actual), type(expected)
+
+    if (type_a == 'table') and (type_e == 'table') then
+        for k, v in pairs(actual) do
             if not _table_contains(expected, v) then
                 return false
             end
         end
-        for k,v in pairs(expected) do
+        for k, v in pairs(expected) do
             if not _table_contains(actual, v) then
                 return false
             end
         end
         return true
-    elseif type(actual) ~= type(expected) then
+
+    elseif type_a ~= type_e then
         return false
-    elseif actual == expected then
-        return true
+
+    elseif actual ~= expected then
+        return false
     end
-    return false
+
+    return true
 end
 
-local function _is_table_equals(actual, expected)
-    if (type(actual) == 'table') and (type(expected) == 'table') then
+--[[
+This is a specialized metatable to help with the bookkeeping of recursions
+in _is_table_equals(). It provides an __index table that implements utility
+functions for easier management of the table. The "cached" method queries
+the state of a specific (actual,expected) pair; and the "store" method sets
+this state to the given value. The state of pairs not "seen" / visited is
+assumed to be `nil`.
+]]
+local _recursion_cache_MT = {
+    __index = {
+        -- Return the cached value for an (actual,expected) pair (or `nil`)
+        cached = function(t, actual, expected)
+            local subtable = t[actual] or {}
+            return subtable[expected]
+        end,
+
+        -- Store cached value for a specific (actual,expected) pair.
+        -- Returns the value, so it's easy to use for a "tailcall" (return ...).
+        store = function(t, actual, expected, value, asymmetric)
+            local subtable = t[actual]
+            if not subtable then
+                subtable = {}
+                t[actual] = subtable
+            end
+            subtable[expected] = value
+
+            -- Unless explicitly marked "asymmetric": Consider the recursion
+            -- on (expected,actual) to be equivalent to (actual,expected) by
+            -- default, and thus cache the value for both.
+            if not asymmetric then
+                t:store(expected, actual, value, true)
+            end
+
+            return value
+        end
+    }
+}
+
+local function _is_table_equals(actual, expected, recursions)
+    local type_a, type_e = type(actual), type(expected)
+    recursions = recursions or setmetatable({}, _recursion_cache_MT)
+
+    if type_a ~= type_e then
+        return false -- different types won't match
+    end
+
+    if (type_a == 'table') --[[ and (type_e == 'table') ]] then
+        if actual == expected then
+            -- Both reference the same table, so they are actually identical
+            return recursions:store(actual, expected, true)
+        end
+
+        -- If we've tested this (actual,expected) pair before: return cached value
+        local previous = recursions:cached(actual, expected)
+        if previous ~= nil then
+            return previous
+        end
+
+        -- Mark this (actual,expected) pair, so we won't recurse it again. For
+        -- now, assume a "false" result, which we might adjust later if needed.
+        recursions:store(actual, expected, false)
+
+        -- Tables must have identical element count, or they can't match.
         if (#actual ~= #expected) then
             return false
         end
 
-        local actualTableKeys = {}
-        for k,v in pairs(actual) do
+        local actualKeysMatched, actualTableKeys = {}, {}
+
+        for k, v in pairs(actual) do
             if M.TABLE_EQUALS_KEYBYCONTENT and type(k) == "table" then
                 -- If the keys are tables, things get a bit tricky here as we
-                -- can have _is_table_equals(k1, k2) and t[k1] ~= t[k2]. So we
-                -- collect actual's table keys, group them by length for
-                -- performance, and then for each table key in expected we look
-                -- it up in actualTableKeys.
-                if not actualTableKeys[#k] then actualTableKeys[#k] = {} end
-                table.insert(actualTableKeys[#k], k)
+                -- can have _is_table_equals(t[k1], t[k2]) despite k1 ~= k2. So
+                -- we first collect table keys from "actual", and then later try
+                -- to match each table key from "expected" to actualTableKeys.
+                table.insert(actualTableKeys, k)
             else
-                if not _is_table_equals(v, expected[k]) then
-                    return false
+                if not _is_table_equals(v, expected[k], recursions) then
+                    return false -- Mismatch on value, tables can't be equal
                 end
+                actualKeysMatched[k] = true -- Keep track of matched keys
             end
         end
 
-        for k,v in pairs(expected) do
+        for k, v in pairs(expected) do
             if M.TABLE_EQUALS_KEYBYCONTENT and type(k) == "table" then
-                local candidates = actualTableKeys[#k]
-                if not candidates then return false end
-                local found
-                for i, candidate in pairs(candidates) do
-                    if _is_table_equals(candidate, k) then
-                        found = candidate
-                        -- Remove the candidate we matched against from the list
-                        -- of candidates, so each key in actual can only match
-                        -- one key in expected.
-                        candidates[i] = nil
-                        break
+                local found = false
+                -- Note: DON'T use ipairs() here, table may be non-sequential!
+                for i, candidate in pairs(actualTableKeys) do
+                    if _is_table_equals(candidate, k, recursions) then
+                        if _is_table_equals(actual[candidate], v, recursions) then
+                            found = true
+                            -- Remove the candidate we matched against from the list
+                            -- of table keys, so each key in actual can only match
+                            -- one key in expected.
+                            actualTableKeys[i] = nil
+                            break
+                        end
+                        -- keys match but values don't, keep searching
                     end
                 end
-                if not(found and _is_table_equals(actual[found], v)) then return false end
+                if not found then
+                    return false -- no matching (key,value) pair
+                end
             else
-                if not _is_table_equals(v, actual[k]) then
+                if not actualKeysMatched[k] then
+                    -- Found a key that we did not see in "actual" -> mismatch
                     return false
                 end
+                -- Otherwise we know that actual[k] was already matched
+                -- against v = expected[k]. Remove k from the table again.
+                actualKeysMatched[k] = nil
             end
         end
 
-        if M.TABLE_EQUALS_KEYBYCONTENT then
-            for _, keys in pairs(actualTableKeys) do
-                -- if there are any keys left in any actualTableKeys[i] then
-                -- that is a key in actual with no matching key in expected,
-                -- and so the tables aren't equal.
-                if next(keys) then return false end
-            end
+        -- If we have any keys left in the actualKeysMatched table, then those
+        -- were missing from "expected", meaning the tables are different.
+        if next(actualKeysMatched) then return false end
+
+        if next(actualTableKeys) then
+            -- If there is any key left in actualTableKeys, then that is
+            -- a table-type key in actual with no matching counterpart
+            -- (in expected), and so the tables aren't equal.
+            return false
         end
 
-        return true
-    elseif type(actual) ~= type(expected) then
+        -- The tables are actually considered equal, update cache and return result
+        return recursions:store(actual, expected, true)
+
+    elseif actual ~= expected then
         return false
-    elseif actual == expected then
-        return true
     end
-    return false
+
+    return true
 end
 M.private._is_table_equals = _is_table_equals
 
@@ -665,15 +778,20 @@ end
 
 -- Help Lua in corner cases like almostEquals(1.1, 1.0, 0.1), which by default
 -- may not work. We need to give margin a small boost; EPSILON defines the
--- default value to use for this:
-local EPSILON = 0.00000000001
+-- default value to use for this. Since Lua may be compiled with different
+-- numeric precisions (single vs. double), we try to select a useful default:
+local EPSILON = math.exp(-51 * math.log(2)) -- 2 * (2^-52, machine epsilon for "double") ~4.44E-16
+if math.abs(1.1 - 1 - 0.1) > EPSILON then
+    -- rounding error is above EPSILON, assume single precision
+    EPSILON = math.exp(-22 * math.log(2)) -- 2 * (2^-23, machine epsilon for "float") ~2.38E-07
+end
 function M.almostEquals( actual, expected, margin, margin_boost )
     if type(actual) ~= 'number' or type(expected) ~= 'number' or type(margin) ~= 'number' then
         error_fmt(3, 'almostEquals: must supply only number arguments.\nArguments supplied: %s, %s, %s',
             prettystr(actual), prettystr(expected), prettystr(margin))
     end
-    if margin <= 0 then
-        error('almostEquals: margin must be positive, current value is ' .. margin, 3)
+    if margin < 0 then
+        error('almostEquals: margin must not be negative, current value is ' .. margin, 3)
     end
     local realmargin = margin + (margin_boost or EPSILON)
     return math.abs(expected - actual) <= realmargin
@@ -833,6 +951,22 @@ for _, funcName in ipairs(
 end
 
 --[[
+Add shortcuts for verifying type of a variable, without failure (luaunit v2 compatibility)
+M.isXxx(value) -> returns true if type(value) conforms to "xxx"
+]]
+for _, typeExpected in ipairs(
+    {'Number', 'String', 'Table', 'Boolean',
+     'Function', 'Userdata', 'Thread', 'Nil' }
+) do
+    local typeExpectedLower = typeExpected:lower()
+    local isType = function(value)
+        return (type(value) == typeExpectedLower)
+    end
+    M['is'..typeExpected] = isType
+    M['is_'..typeExpectedLower] = isType
+end
+
+--[[
 Add non-type assertion functions to the module table M. Each of these functions
 takes a single parameter "value", and checks that its Lua type differs from the
 expected string (derived from the function name):
@@ -900,7 +1034,8 @@ function M.wrapFunctions(...)
     -- so just do nothing !
     io.stderr:write[[Use of WrapFunctions() is no longer needed.
 Just prefix your test function names with "test" or "Test" and they
-will be picked up and run by LuaUnit.]]
+will be picked up and run by LuaUnit.
+]]
 end
 
 local list_of_funcs = {
@@ -1001,7 +1136,7 @@ local list_of_funcs = {
 
 -- Create all aliases in M
 for _,v in ipairs( list_of_funcs ) do
-    funcname, alias = v[1], v[2]
+    local funcname, alias = v[1], v[2]
     M[alias] = M[funcname]
 
     if EXPORT_ASSERT_TO_GLOBALS then
@@ -1408,21 +1543,20 @@ end
         if 'function' == type(aObject) then return aObject end
     end
 
-    function M.LuaUnit.isClassMethod(aName)
-        -- return true if aName contains a class + a method name in the form class:method
-        return string.find(aName, '.', nil, true) ~= nil
-    end
-
     function M.LuaUnit.splitClassMethod(someName)
-        -- return a pair className, methodName for a name in the form class:method
-        -- return nil if not a class + method name
-        -- name is class + method
-        local hasMethod, methodName, className
-        hasMethod = string.find(someName, '.', nil, true )
-        if not hasMethod then return nil end
-        methodName = string.sub(someName, hasMethod+1)
-        className = string.sub(someName,1,hasMethod-1)
-        return className, methodName
+        --[[
+        Return a pair of className, methodName strings for a name in the form
+        "class.method". If no class part (or separator) is found, will return
+        nil, someName instead (the latter being unchanged).
+
+        This convention thus also replaces the older isClassMethod() test:
+        You just have to check for a non-nil className (return) value.
+        ]]
+        local separator = string.find(someName, '.', 1, true)
+        if separator then
+            return someName:sub(1, separator - 1), someName:sub(separator + 1)
+        end
+        return nil, someName
     end
 
     function M.LuaUnit.isMethodTestName( s )
@@ -1459,6 +1593,7 @@ end
         -- --error, -e: treat errors as fatal (quit program)
         -- --output, -o, + name: select output type
         -- --pattern, -p, + pattern: run test matching pattern, may be repeated
+        -- --random, -r, : run tests in random order
         -- --name, -n, + fname: name of output file for junit, default to stdout
         -- [testnames, ...]: run selected test names
         --
@@ -1496,6 +1631,9 @@ end
                 return
             elseif option == '--failure' or option == '-f' then
                 result['quitOnFailure'] = true
+                return
+            elseif option == '--random' or option == '-r' then
+                result['randomize'] = true
                 return
             elseif option == '--output' or option == '-o' then
                 state = SET_OUTPUT
@@ -1948,7 +2086,11 @@ end
     end
 
     function M.LuaUnit.expandOneClass( result, className, classInstance )
-        -- add all test methods of classInstance to result
+        --[[
+        Input: a list of { name, instance }, a class name, a class instance
+        Ouptut: modify result to add all test method instance in the form:
+        { className.methodName, classInstance }
+        ]]
         for methodName, methodInstance in sortedPairs(classInstance) do
             if M.LuaUnit.asFunction(methodInstance) and M.LuaUnit.isMethodTestName( methodName ) then
                 table.insert( result, { className..'.'..methodName, classInstance } )
@@ -1957,8 +2099,17 @@ end
     end
 
     function M.LuaUnit.expandClasses( listOfNameAndInst )
+        --[[
         -- expand all classes (provided as {className, classInstance}) to a list of {className.methodName, classInstance}
         -- functions and methods remain untouched
+
+        Input: a list of { name, instance }
+
+        Output:
+        * { function name, function instance } : do nothing
+        * { class.method name, class instance }: do nothing
+        * { class name, class instance } : add all method names in the form of (className.methodName, classInstance)
+        ]]
         local result = {}
 
         for i,v in ipairs( listOfNameAndInst ) do
@@ -1969,9 +2120,9 @@ end
                 if type(instance) ~= 'table' then
                     error( 'Instance must be a table or a function, not a '..type(instance)..', value '..prettystr(instance))
                 end
-                if M.LuaUnit.isClassMethod( name ) then
-                    className, methodName = M.LuaUnit.splitClassMethod( name )
-                    methodInstance = instance[methodName]
+                local className, methodName = M.LuaUnit.splitClassMethod( name )
+                if className then
+                    local methodInstance = instance[methodName]
                     if methodInstance == nil then
                         error( "Could not find method in class "..tostring(className).." for method "..tostring(methodName) )
                     end
@@ -1999,16 +2150,19 @@ end
     end
 
     function M.LuaUnit:runSuiteByInstances( listOfNameAndInst )
-        -- Run an explicit list of tests. All test instances and names must be supplied.
-        -- each test must be one of:
-        --   * { function name, function instance }
-        --   * { class name, class instance }
-        --   * { class.method name, class instance }
+        --[[ Run an explicit list of tests. All test instances and names must be supplied.
+        each test must be one of:
+        * { function name, function instance }
+        * { class name, class instance }
+        * { class.method name, class instance }
+        ]]
 
-        local expandedList, filteredList, filteredOutList, className, methodName, methodInstance
-        expandedList = self.expandClasses( listOfNameAndInst )
-
-        filteredList, filteredOutList = self.applyPatternFilter( self.patternFilter, expandedList )
+        local expandedList = self.expandClasses( listOfNameAndInst )
+        if self.randomize then
+            randomizeTable( expandedList )
+        end
+        local filteredList, filteredOutList
+            = self.applyPatternFilter( self.patternFilter, expandedList )
 
         self:startSuite( #filteredList, #filteredOutList )
 
@@ -2017,17 +2171,13 @@ end
             if M.LuaUnit.asFunction(instance) then
                 self:execOneFunction( nil, name, nil, instance )
             else
-                if type(instance) ~= 'table' then
-                    error( 'Instance must be a table or a function, not a '..type(instance)..', value '..prettystr(instance))
-                else
-                    assert( M.LuaUnit.isClassMethod( name ) )
-                    className, methodName = M.LuaUnit.splitClassMethod( name )
-                    methodInstance = instance[methodName]
-                    if methodInstance == nil then
-                        error( "Could not find method in class "..tostring(className).." for method "..tostring(methodName) )
-                    end
-                    self:execOneFunction( className, methodName, instance, methodInstance )
-                end
+                -- expandClasses() should have already taken care of sanitizing the input
+                assert( type(instance) == 'table' )
+                local className, methodName = M.LuaUnit.splitClassMethod( name )
+                assert( className ~= nil )
+                local methodInstance = instance[methodName]
+                assert(methodInstance ~= nil)
+                self:execOneFunction( className, methodName, instance, methodInstance )
             end
             if self.result.aborted then break end -- "--error" or "--failure" option triggered
         end
@@ -2045,14 +2195,17 @@ end
     end
 
     function M.LuaUnit:runSuiteByNames( listOfName )
-        -- Run an explicit list of test names
+        --[[ Run LuaUnit with a list of generic names, coming either from command-line or from global
+            namespace analysis. Convert the list into a list of (name, valid instances (table or function))
+            and calls runSuiteByInstances.
+        ]]
 
-        local  className, methodName, instanceName, instance, methodInstance
+        local instanceName, instance
         local listOfNameAndInst = {}
 
         for i,name in ipairs( listOfName ) do
-            if M.LuaUnit.isClassMethod( name ) then
-                className, methodName = M.LuaUnit.splitClassMethod( name )
+            local className, methodName = M.LuaUnit.splitClassMethod( name )
+            if className then
                 instanceName = className
                 instance = _G[instanceName]
 
@@ -2064,7 +2217,7 @@ end
                     error( 'Instance of '..instanceName..' must be a table, not '..type(instance))
                 end
 
-                methodInstance = instance[methodName]
+                local methodInstance = instance[methodName]
                 if methodInstance == nil then
                     error( "Could not find method in class "..tostring(className).." for method "..tostring(methodName) )
                 end
@@ -2116,15 +2269,7 @@ end
             args = cmdline_argv
         end
 
-        local no_error, val = pcall( M.LuaUnit.parseCmdLine, args )
-        if not no_error then
-            print(val) -- error message
-            print()
-            print(M.USAGE)
-            os.exit(-1)
-        end
-
-        local options = val
+        local options = pcall_or_abort( M.LuaUnit.parseCmdLine, args )
 
         -- We expect these option fields to be either `nil` or contain
         -- valid values, so it's safe to always copy them directly.
@@ -2133,20 +2278,14 @@ end
         self.quitOnFailure = options.quitOnFailure
         self.fname         = options.fname
         self.patternFilter = options.pattern
-
-        if options.output and options.output:lower() == 'junit' and options.fname == nil then
-            print('With junit output, a filename must be supplied with -n or --name')
-            os.exit(-1)
-        end
+        self.randomize     = options.randomize
 
         if options.output then
-            no_error, val = pcall(self.setOutputType, self, options.output)
-            if not no_error then
-                print(val) -- error message
-                print()
-                print(M.USAGE)
+            if options.output:lower() == 'junit' and options.fname == nil then
+                print('With junit output, a filename must be supplied with -n or --name')
                 os.exit(-1)
             end
+            pcall_or_abort(self.setOutputType, self, options.output)
         end
 
         self:runSuiteByNames( options.testNames or M.LuaUnit.collectTests() )
