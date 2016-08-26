@@ -696,11 +696,27 @@ local function _is_table_equals(actual, expected, recursions)
 end
 M.private._is_table_equals = _is_table_equals
 
+-- Unprotected test context variables
+-- TODO: add stacktrace!!!
+M.private.isUnprotectedCall = false
+M.private.unprotectedTestError = { isFailed = false,
+                                    errorMsg = "",
+                                    errorLevel = 1 }
+
 local function failure(msg, level)
     -- raise an error indicating a test failure
-    -- for error() compatibility we adjust "level" here (by +1), to report the
-    -- calling context
-    error(M.FAILURE_PREFIX .. msg, (level or 1) + 1)
+    -- if its an unprotected test, log the error instead
+    if M.private.isUnprotectedCall then
+        if not M.private.unprotectedTestError.isFailed then
+            M.private.unprotectedTestError.isFailed = true
+            M.private.unprotectedTestError.errorMsg = msg
+            M.private.unprotectedTestError.errorLevel = level
+        end
+    else
+        -- for error() compatibility we adjust "level" here (by +1), to report the
+        -- calling context
+        error(M.FAILURE_PREFIX .. msg, (level or 1) + 1)
+    end
 end
 
 local function fail_fmt(level, ...)
@@ -708,11 +724,6 @@ local function fail_fmt(level, ...)
     failure(string.format(...), (level or 1) + 1)
 end
 M.private.fail_fmt = fail_fmt
-
-local function error_fmt(level, ...)
-     -- printf-style error()
-    error(string.format(...), (level or 1) + 1)
-end
 
 ----------------------------------------------------------------
 --
@@ -785,13 +796,14 @@ if math.abs(1.1 - 1 - 0.1) > EPSILON then
     -- rounding error is above EPSILON, assume single precision
     EPSILON = math.exp(-22 * math.log(2)) -- 2 * (2^-23, machine epsilon for "float") ~2.38E-07
 end
+
 function M.almostEquals( actual, expected, margin, margin_boost )
     if type(actual) ~= 'number' or type(expected) ~= 'number' or type(margin) ~= 'number' then
-        error_fmt(3, 'almostEquals: must supply only number arguments.\nArguments supplied: %s, %s, %s',
+        fail_fmt(3, 'almostEquals: must supply only number arguments.\nArguments supplied: %s, %s, %s',
             prettystr(actual), prettystr(expected), prettystr(margin))
     end
     if margin < 0 then
-        error('almostEquals: margin must not be negative, current value is ' .. margin, 3)
+        failure('almostEquals: margin must not be negative, current value is ' .. margin, 3)
     end
     local realmargin = margin + (margin_boost or EPSILON)
     return math.abs(expected - actual) <= realmargin
@@ -1559,10 +1571,15 @@ end
         return nil, someName
     end
 
-    function M.LuaUnit.isMethodTestName( s )
-        -- return true is the name matches the name of a test method
+    function M.LuaUnit.isMethodName( s )
+        -- return true is the name matches the name of a test
         -- default rule is that is starts with 'Test' or with 'test'
         return string.sub(s, 1, 4):lower() == 'test'
+    end
+
+    function M.LuaUnit.isUnprotectedMethodName( s )
+        -- return true is the name matches the name of an unprotected test
+        return string.sub(s, 1, 6):lower() == 'lvtest'
     end
 
     function M.LuaUnit.isTestName( s )
@@ -1984,6 +2001,39 @@ end
 
     --------------[[ Runner ]]-----------------
 
+    function M.LuaUnit:unprotectedCall(classInstance, methodInstance, prettyFuncName)
+        -- Used for functions that cannot be called from a (x)pcall context
+        -- if classInstance is nil, this is just a function call
+        -- else, it's method of a class being called.
+
+        local result = {
+            status = NodeStatus.PASS,
+            msg = "",
+            trace = ""
+        }
+
+        -- make sure the failure function will not throw an error but log it
+        M.private.isUnprotectedCall = true
+
+        if classInstance then
+            methodInstance(classInstance)
+        else
+            methodInstance()
+        end
+
+        M.private.isUnprotectedCall = false
+
+        -- register failure if any
+        if M.private.unprotectedTestError.isFailed then
+            result.status = NodeStatus.FAIL
+            result.msg = M.private.unprotectedTestError.errorMsg
+            -- TODO
+            trace = ""
+        end
+
+        return result
+    end
+
     function M.LuaUnit:protectedCall(classInstance, methodInstance, prettyFuncName)
         -- if classInstance is nil, this is just a function call
         -- else, it's method of a class being called.
@@ -2068,7 +2118,13 @@ end
 
         -- run testMethod()
         if self.result.currentNode:isPassed() then
-            self:addStatus(self:protectedCall(classInstance, methodInstance, prettyFuncName))
+            if M.LuaUnit.isUnprotectedMethodName(methodName) then
+                -- unprotected test method
+                self:addStatus(self:unprotectedCall(classInstance, methodInstance, prettyFuncName))
+            else
+                -- regular test method
+                self:addStatus(self:protectedCall(classInstance, methodInstance, prettyFuncName))
+            end
         end
 
         -- lastly, run tearDown (if any)
@@ -2092,7 +2148,7 @@ end
         { className.methodName, classInstance }
         ]]
         for methodName, methodInstance in sortedPairs(classInstance) do
-            if M.LuaUnit.asFunction(methodInstance) and M.LuaUnit.isMethodTestName( methodName ) then
+            if M.LuaUnit.asFunction(methodInstance) and (M.LuaUnit.isMethodName( methodName ) or M.LuaUnit.isUnprotectedMethodName( methodName )) then
                 table.insert( result, { className..'.'..methodName, classInstance } )
             end
         end
