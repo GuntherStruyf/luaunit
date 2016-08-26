@@ -2014,6 +2014,7 @@ end
 
         -- make sure the failure function will not throw an error but log it
         M.private.isUnprotectedCall = true
+        M.private.unprotectedTestError.isFailed = false
 
         if classInstance then
             methodInstance(classInstance)
