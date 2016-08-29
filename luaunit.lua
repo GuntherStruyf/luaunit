@@ -697,10 +697,10 @@ end
 M.private._is_table_equals = _is_table_equals
 
 -- Unprotected test context variables
--- TODO: add stacktrace!!!
 M.private.isUnprotectedCall = false
 M.private.unprotectedTestError = { isFailed = false,
                                     errorMsg = "",
+                                    errorTrace = "",
                                     errorLevel = 1 }
 
 local function failure(msg, level)
@@ -710,6 +710,7 @@ local function failure(msg, level)
         if not M.private.unprotectedTestError.isFailed then
             M.private.unprotectedTestError.isFailed = true
             M.private.unprotectedTestError.errorMsg = msg
+            M.private.unprotectedTestError.errorTrace = debug.traceback()
             M.private.unprotectedTestError.errorLevel = level
         end
     else
@@ -2028,8 +2029,15 @@ end
         if M.private.unprotectedTestError.isFailed then
             result.status = NodeStatus.FAIL
             result.msg = M.private.unprotectedTestError.errorMsg
-            -- TODO
-            trace = ""
+            result.trace = M.private.unprotectedTestError.errorTrace
+        end
+
+        -- reformat / improve the stack trace
+        if prettyFuncName then -- we do have the real method name
+            result.trace = result.trace:gsub("in (%a+) 'methodInstance'", "in %1 '"..prettyFuncName.."'")
+        end
+        if STRIP_LUAUNIT_FROM_STACKTRACE then
+            result.trace = stripLuaunitTrace(result.trace)
         end
 
         return result
