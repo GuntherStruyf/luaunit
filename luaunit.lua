@@ -2123,6 +2123,13 @@ end
             if func then
                 self:addStatus(self:protectedCall(classInstance, func, className..'.setUp'))
             end
+            func = self.asFunction( classInstance.LVsetUp )
+                         or self.asFunction( classInstance.LVSetup )
+                         or self.asFunction( classInstance.LVsetup )
+                         or self.asFunction( classInstance.LVSetUp )
+            if func and self.result.currentNode:isPassed() then
+                self:addStatus(self:unprotectedCall(classInstance, func, className..'.LVsetUp'))
+            end
         end
 
         -- run testMethod()
@@ -2138,6 +2145,13 @@ end
 
         -- lastly, run tearDown (if any)
         if classInstance then
+            local func = self.asFunction( classInstance.LVtearDown )
+                         or self.asFunction( classInstance.LVTearDown )
+                         or self.asFunction( classInstance.LVteardown )
+                         or self.asFunction( classInstance.LVTeardown )
+            if func then
+                self:addStatus(self:unprotectedCall(classInstance, func, className..'.LVtearDown'))
+            end
             local func = self.asFunction( classInstance.tearDown )
                          or self.asFunction( classInstance.TearDown )
                          or self.asFunction( classInstance.teardown )
