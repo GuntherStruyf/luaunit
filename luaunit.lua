@@ -752,39 +752,44 @@ function M.assertError(f, ...)
     end
 end
 
-function M.assertTrue(value)
+function M.assertTrue(value, msg)
     if not value then
-        failure("expected: true, actual: " ..prettystr(value), 2)
+        local msg = msg or "expected: true, actual: " ..prettystr(value)
+        failure(msg, 2)
     end
 end
 
-function M.assertFalse(value)
+function M.assertFalse(value, msg)
     if value then
-        failure("expected: false, actual: " ..prettystr(value), 2)
+        local msg = msg or "expected: false, actual: " ..prettystr(value)
+        failure(msg, 2)
     end
 end
 
-function M.assertIsNil(value)
+function M.assertIsNil(value, msg)
     if value ~= nil then
-        failure("expected: nil, actual: " ..prettystr(value), 2)
+        local msg = msg or "expected: nil, actual: " ..prettystr(value)
+        failure(msg, 2)
     end
 end
 
-function M.assertNotIsNil(value)
+function M.assertNotIsNil(value, msg)
     if value == nil then
-        failure("expected non nil value, received nil", 2)
+        local msg = msg or "expected non nil value, received nil"
+        failure(msg, 2)
     end
 end
 
-function M.assertEquals(actual, expected)
+function M.assertEquals(actual, expected, msg)
+    local msg = msg or errorMsgEquality(actual, expected)
     if type(actual) == 'table' and type(expected) == 'table' then
         if not _is_table_equals(actual, expected) then
-            failure( errorMsgEquality(actual, expected), 2 )
+            failure(msg, 2)
         end
     elseif type(actual) ~= type(expected) then
-        failure( errorMsgEquality(actual, expected), 2 )
+        failure(msg, 2)
     elseif actual ~= expected then
-        failure( errorMsgEquality(actual, expected), 2 )
+        failure(msg, 2)
     end
 end
 
@@ -810,18 +815,20 @@ function M.almostEquals( actual, expected, margin, margin_boost )
     return math.abs(expected - actual) <= realmargin
 end
 
-function M.assertAlmostEquals( actual, expected, margin )
+function M.assertAlmostEquals( actual, expected, margin, msg )
     -- check that two floats are close by margin
     if not M.almostEquals(actual, expected, margin) then
         if not M.ORDER_ACTUAL_EXPECTED then
             expected, actual = actual, expected
         end
-        fail_fmt(2, 'Values are not almost equal\nExpected: %s with margin of %s, received: %s',
-                 expected, margin, actual)
+        local msg = msg or string.format('Values are not almost equal\nExpected: %s with margin of %s, received: %s',
+                                    expected, margin, actual)
+        fail_fmt(2, msg)
+                 
     end
 end
 
-function M.assertNotEquals(actual, expected)
+function M.assertNotEquals(actual, expected, msg)
     if type(actual) ~= type(expected) then
         return
     end
@@ -833,17 +840,19 @@ function M.assertNotEquals(actual, expected)
     elseif actual ~= expected then
         return
     end
-    fail_fmt(2, 'Received the not expected value: %s', prettystr(actual))
+    local msg = msg or 'Received the not expected value: ' ..prettystr(actual)
+    fail_fmt(2, msg)
 end
 
-function M.assertNotAlmostEquals( actual, expected, margin )
+function M.assertNotAlmostEquals( actual, expected, margin, msg )
     -- check that two floats are not close by margin
     if M.almostEquals(actual, expected, margin) then
         if not M.ORDER_ACTUAL_EXPECTED then
             expected, actual = actual, expected
         end
-        fail_fmt(2, 'Values are almost equal\nExpected: %s with a difference above margin of %s, received: %s',
-                 expected, margin, actual)
+        local msg = msg or string.format('Values are almost equal\nExpected: %s with a difference above margin of %s, received: %s',
+                                    expected, margin, actual)
+        fail_fmt(2, msg)
     end
 end
 
