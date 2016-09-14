@@ -65,8 +65,11 @@ Options:
   -o, --output OUTPUT:    Set output type to OUTPUT
                           Possible values: text, tap, junit, nil
   -n, --name NAME:        For junit only, mandatory name of xml file
-  -p, --pattern PATTERN:  Execute all test names matching the Lua PATTERN
-                          May be repeated to include severals patterns
+  -i, --include PATTERN:  Include all test names matching the Lua PATTERN
+                          May be repeated multiple times
+                          Make sure you escape magic chars like +? with %
+  -x, --exclude PATTERN:  Exclude all test names matching the Lua PATTERN
+                          May be repeated multiple times
                           Make sure you escape magic chars like +? with %
   testname1, testname2, ... : tests to run in the form of testFunction,
                               TestClass or TestClass.testMethod
@@ -1619,7 +1622,8 @@ end
         -- --quiet, -q: silence output
         -- --error, -e: treat errors as fatal (quit program)
         -- --output, -o, + name: select output type
-        -- --pattern, -p, + pattern: run test matching pattern, may be repeated
+        -- --include, -i, + include: run tests matching pattern, may be repeated
+        -- --exclude, -x, + exclude: run tests not matching pattern, may be repeated
         -- --random, -r, : run tests in random order
         -- --name, -n, + fname: name of output file for junit, default to stdout
         -- [testnames, ...]: run selected test names
@@ -1628,13 +1632,15 @@ end
         -- verbosity: nil, M.VERBOSITY_DEFAULT, M.VERBOSITY_QUIET, M.VERBOSITY_VERBOSE
         -- output: nil, 'tap', 'junit', 'text', 'nil'
         -- testNames: nil or a list of test names to run
-        -- pattern: nil or a list of patterns
+        -- include: nil or a list of patterns
+        -- exclude: nil or a list of patterns
 
         local result = {}
         local state = nil
         local SET_OUTPUT = 1
-        local SET_PATTERN = 2
-        local SET_FNAME = 3
+        local SET_INCLUDE = 2
+        local SET_EXCLUDE = 3
+        local SET_FNAME = 4
 
         if cmdLine == nil then
             return result
@@ -1668,8 +1674,11 @@ end
             elseif option == '--name' or option == '-n' then
                 state = SET_FNAME
                 return state
-            elseif option == '--pattern' or option == '-p' then
-                state = SET_PATTERN
+            elseif option == '--include' or option == '-i' then
+                state = SET_INCLUDE
+                return state
+            elseif option == '--exclude' or option == '-x' then
+                state = SET_EXCLUDE
                 return state
             end
             error('Unknown option: '..option,3)
@@ -1682,11 +1691,18 @@ end
             elseif state == SET_FNAME then
                 result['fname'] = cmdArg
                 return
-            elseif state == SET_PATTERN then
-                if result['pattern'] then
-                    table.insert( result['pattern'], cmdArg )
+            elseif state == SET_INCLUDE then
+                if result['include'] then
+                    table.insert( result['include'], cmdArg )
                 else
-                    result['pattern'] = { cmdArg }
+                    result['include'] = { cmdArg }
+                end
+                return
+            elseif state == SET_EXCLUDE then
+                if result['exclude'] then
+                    table.insert( result['exclude'], cmdArg )
+                else
+                    result['exclude'] = { cmdArg }
                 end
                 return
             end
@@ -1739,11 +1755,7 @@ end
     function M.LuaUnit.patternInclude( patternFilter, expr )
         -- check if any of patternFilter is contained in expr. If so, return true.
         -- return false if None of the patterns are contained in expr
-        -- if patternFilter is nil, return true (no filtering)
-        if patternFilter == nil then
-            return true
-        end
-
+        --
         for i,pattern in ipairs(patternFilter) do
             if string.find(expr, pattern) then
                 return true
@@ -1871,7 +1883,8 @@ end
             startTime = os.clock(),
             startDate = os.date(os.getenv('LUAUNIT_DATEFMT')),
             startIsodate = os.date('%Y-%m-%dT%H:%M:%S'),
-            patternFilter = self.patternFilter,
+            filterInclude = self.filterInclude,
+            filterExclude = self.filterExclude,
             tests = {},
             failures = {},
             errors = {},
@@ -2249,12 +2262,18 @@ end
         if self.randomize then
             randomizeTable( expandedList )
         end
-        local filteredList, filteredOutList
-            = self.applyPatternFilter( self.patternFilter, expandedList )
 
-        self:startSuite( #filteredList, #filteredOutList )
+        local testsToRun = expandedList
+        if self.filterInclude then
+            testsToRun, _ = self.applyPatternFilter( self.filterInclude, testsToRun )
+        end
+        if self.filterExclude then
+            _, testsToRun = self.applyPatternFilter( self.filterExclude, testsToRun )
+        end
 
-        for i,v in ipairs( filteredList ) do
+        self:startSuite( #testsToRun, #expandedList - #testsToRun )
+
+        for i,v in ipairs( testsToRun ) do
             local name, instance = v[1], v[2]
             if M.LuaUnit.asFunction(instance) then
                 self:execOneFunction( nil, name, nil, instance )
@@ -2365,7 +2384,8 @@ end
         self.quitOnError   = options.quitOnError
         self.quitOnFailure = options.quitOnFailure
         self.fname         = options.fname
-        self.patternFilter = options.pattern
+        self.filterInclude = options.include
+        self.filterExclude = options.exclude
         self.randomize     = options.randomize
 
         if options.output then

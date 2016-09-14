@@ -511,20 +511,19 @@ TestLuaUnitUtilities = { __class__ = 'TestLuaUnitUtilities' }
         lu.assertErrorMsgContains( 'Missing argument after -n', lu.LuaUnit.parseCmdLine, { '-n', } )
 
         --patterns
-        lu.assertEquals( lu.LuaUnit.parseCmdLine( { '--pattern', 'toto' } ), { pattern={'toto'} } )
-        lu.assertEquals( lu.LuaUnit.parseCmdLine( { '-p', 'toto' } ), { pattern={'toto'} } )
-        lu.assertEquals( lu.LuaUnit.parseCmdLine( { '-p', 'titi', '-p', 'toto' } ), { pattern={'titi', 'toto'} } )
-        lu.assertErrorMsgContains( 'Missing argument after -p', lu.LuaUnit.parseCmdLine, { '-p', } )
+        lu.assertEquals( lu.LuaUnit.parseCmdLine( { '--include', 'toto' } ), { include={'toto'} } )
+        lu.assertEquals( lu.LuaUnit.parseCmdLine( { '-i', 'toto' } ), { include={'toto'} } )
+        lu.assertEquals( lu.LuaUnit.parseCmdLine( { '-i', 'titi', '-i', 'toto' } ), { include={'titi', 'toto'} } )
+        lu.assertErrorMsgContains( 'Missing argument after -i', lu.LuaUnit.parseCmdLine, { '-i', } )
 
         --megamix
-        lu.assertEquals( lu.LuaUnit.parseCmdLine( { '-p', 'toto', 'titi', '-v', 'tata', '-o', 'tintin', '-p', 'tutu', 'prout', '-n', 'toto.xml' } ), 
-            { pattern={'toto', 'tutu'}, verbosity=lu.VERBOSITY_VERBOSE, output='tintin', testNames={'titi', 'tata', 'prout'}, fname='toto.xml' } )
+        lu.assertEquals( lu.LuaUnit.parseCmdLine( { '-i', 'toto', 'titi', '-v', 'tata', '-o', 'tintin', '-i', 'tutu', 'prout', '-n', 'toto.xml' } ), 
+            { include={'toto', 'tutu'}, verbosity=lu.VERBOSITY_VERBOSE, output='tintin', testNames={'titi', 'tata', 'prout'}, fname='toto.xml' } )
 
-        lu.assertErrorMsgContains( 'option: -x', lu.LuaUnit.parseCmdLine, { '-x', } )
+        lu.assertErrorMsgContains( 'option: -z', lu.LuaUnit.parseCmdLine, { '-z', } )
     end
 
     function TestLuaUnitUtilities:test_includePattern()
-        lu.assertEquals( lu.LuaUnit.patternInclude( nil, 'toto'), true )
         lu.assertEquals( lu.LuaUnit.patternInclude( {}, 'toto'), false  )
         lu.assertEquals( lu.LuaUnit.patternInclude( {'toto'}, 'toto'), true )
         lu.assertEquals( lu.LuaUnit.patternInclude( {'toto'}, 'yyytotoxxx'), true )
@@ -534,10 +533,6 @@ TestLuaUnitUtilities = { __class__ = 'TestLuaUnitUtilities' }
 
     function TestLuaUnitUtilities:test_applyPatternFilter()
         local myTestToto1Value = { 'MyTestToto1.test1', MyTestToto1 }
-
-        local included, excluded = lu.LuaUnit.applyPatternFilter( nil, { myTestToto1Value } )
-        lu.assertEquals( excluded, {} )
-        lu.assertEquals( included, { myTestToto1Value } )
 
         included, excluded = lu.LuaUnit.applyPatternFilter( {'T.to'}, { myTestToto1Value } )
         lu.assertEquals( excluded, {} )
@@ -2326,7 +2321,7 @@ TestLuaUnitExecution = { __class__ = 'TestLuaUnitExecution' }
 
         local runner = lu.LuaUnit.new()
         runner:setOutputType( "NIL" )
-        runner:runSuite('-p', 'Function', '-p', 'Toto.' )
+        runner:runSuite('-i', 'Function', '-i', 'Toto.' )
         lu.assertEquals( executedTests[1], "MyTestFunction" )
         lu.assertEquals( executedTests[2], "MyTestToto1:test1" )
         lu.assertEquals( executedTests[3], "MyTestToto1:test2" )
