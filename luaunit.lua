@@ -1316,6 +1316,9 @@ JUnitOutput.__class__ = 'JUnitOutput'
         self.fd:write("        <properties>\n")
         self.fd:write(string.format('            <property name="Lua Version" value="%s"/>\n', _VERSION ) )
         self.fd:write(string.format('            <property name="LuaUnit Version" value="%s"/>\n', M.VERSION) )
+        if (GetVersion) then 
+          self.fd:write(string.format('            <property name="MCP Version" value="%s"/>\n', GetVersion()) )
+        end
         -- XXX please include system name and version if possible
         self.fd:write("        </properties>\n")
 
@@ -2153,7 +2156,9 @@ end
                 self:addStatus(self:unprotectedCall(classInstance, func, className..'.LVsetUp'))
             end
         end
-
+        if Print then
+          Print('..........' .. prettyFuncName .. "\n")
+        end
         -- run testMethod()
         if self.result.currentNode:isPassed() then
             if M.LuaUnit.isUnprotectedMethodName(methodName) then
