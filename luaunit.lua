@@ -2156,8 +2156,8 @@ end
                 self:addStatus(self:unprotectedCall(classInstance, func, className..'.LVsetUp'))
             end
         end
-        if Print then
-          Print('..........' .. prettyFuncName .. "\n")
+        if PrintToConsole then
+          PrintToConsole('..........' .. prettyFuncName .. "\n")
         end
         -- run testMethod()
         if self.result.currentNode:isPassed() then
