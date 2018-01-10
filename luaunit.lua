@@ -1827,12 +1827,12 @@ end
     function NodeStatus:statusXML()
         if self:isError() then
             return table.concat(
-                {'            <error type="', xmlEscape(self.msg), '">\n',
+                {'            <error type="', xmlEscape(self.msg), '" message="', xmlEscape(self.msg), '">\n',
                  '                <![CDATA[', xmlCDataEscape(self.stackTrace),
                  ']]></error>\n'})
         elseif self:isFailure() then
             return table.concat(
-                {'            <failure type="', xmlEscape(self.msg), '">\n',
+                {'            <failure type="', xmlEscape(self.msg), '" message="', xmlEscape(self.msg), '">\n',
                  '                <![CDATA[', xmlCDataEscape(self.stackTrace),
                  ']]></failure>\n'})
         end
